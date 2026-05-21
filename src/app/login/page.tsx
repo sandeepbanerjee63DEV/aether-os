@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { AuthForm } from "@/components/auth/auth-form";
 
 export default function LoginPage() {
-  return <AuthForm defaultMode="login" />;
+  return (
+    <Suspense fallback={null}>
+      <AuthForm defaultMode="login" />
+    </Suspense>
+  );
 }

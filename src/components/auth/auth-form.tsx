@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,9 @@ type AuthMode = "login" | "register";
 
 export function AuthForm({ defaultMode = "login" }: { defaultMode?: AuthMode }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawNext = searchParams.get("next");
+  const nextPath = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/leads";
   const [mode, setMode] = useState<AuthMode>(defaultMode);
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
@@ -62,7 +65,7 @@ export function AuthForm({ defaultMode = "login" }: { defaultMode?: AuthMode }) 
       }
 
       if (data.message) setSuccess(data.message);
-      router.push("/leads");
+      router.push(nextPath);
       router.refresh();
     } catch {
       setError("Connection error. Is the server running?");

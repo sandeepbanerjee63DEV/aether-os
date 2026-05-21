@@ -10,7 +10,7 @@ function setAuthCookies(res: NextResponse, accessToken: string, refreshToken: st
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 900,
+    maxAge: 604800,
     path: "/",
   });
   res.cookies.set(REFRESH_COOKIE, refreshToken, {

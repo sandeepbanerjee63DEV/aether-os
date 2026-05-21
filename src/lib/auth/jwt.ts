@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import type { Role } from "@prisma/client";
+import { AUTH_COOKIE as EDGE_AUTH_COOKIE, REFRESH_COOKIE as EDGE_REFRESH_COOKIE } from "./jwt-edge";
 
 export interface TokenPayload {
   sub: string;
@@ -21,7 +22,7 @@ export async function signAccessToken(payload: TokenPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(process.env.JWT_EXPIRES_IN || "15m")
+    .setExpirationTime(process.env.JWT_EXPIRES_IN || "7d")
     .sign(accessSecret);
 }
 
@@ -58,5 +59,5 @@ export async function getSession(): Promise<TokenPayload | null> {
   return verifyAccessToken(token);
 }
 
-export const AUTH_COOKIE = "aether_token";
-export const REFRESH_COOKIE = "aether_refresh";
+export const AUTH_COOKIE = EDGE_AUTH_COOKIE;
+export const REFRESH_COOKIE = EDGE_REFRESH_COOKIE;
