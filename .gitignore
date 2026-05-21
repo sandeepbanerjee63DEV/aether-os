@@ -39,3 +39,7 @@ prisma/*.db
 # build artifacts / scripts
 /build-output.log
 /.scripts/
+.vercel
+
+# Vercel env pulls
+.env.vercel.*

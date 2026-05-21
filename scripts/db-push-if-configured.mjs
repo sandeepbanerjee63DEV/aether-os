@@ -10,7 +10,18 @@
 
 import { spawnSync } from "node:child_process";
 
-const url = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL;
+// Normalize Vercel / Neon integration env vars to the names Prisma expects.
+if (!process.env.DATABASE_URL && process.env.POSTGRES_PRISMA_URL) {
+  process.env.DATABASE_URL = process.env.POSTGRES_PRISMA_URL;
+}
+if (!process.env.DIRECT_DATABASE_URL) {
+  process.env.DIRECT_DATABASE_URL =
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.DATABASE_URL;
+}
+
+const url = process.env.DATABASE_URL;
 
 if (!url) {
   console.log("[db-setup] DATABASE_URL not set — skipping schema sync. App will use in-memory fallback.");
@@ -18,6 +29,7 @@ if (!url) {
 }
 
 console.log("[db-setup] DATABASE_URL detected — syncing schema...");
+console.log(`[db-setup] Using directUrl: ${process.env.DIRECT_DATABASE_URL ? "yes (separate)" : "no (falls back to DATABASE_URL)"}`);
 
 const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
 const push = spawnSync(npxCmd, ["prisma", "db", "push", "--accept-data-loss", "--skip-generate"], {
