@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  SALES
+  SUPPORT
+  VIEWER
+}
+
+enum LeadStage {
+  LEAD_ENTERED
+  AI_CLASSIFICATION
+  ASSIGNED
+  FOLLOW_UP
+  NURTURING
+  WON
+  LOST
+}
+
+enum LeadStatus {
+  NEW
+  AI_CLASSIFIED
+  ASSIGNED
+  FOLLOW_UP
+  NURTURING
+  HOT
+  WARM
+  COLD
+  WON
+  LOST
+}
+
+enum DealStage {
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  BLOCKED
+}
+
+enum NotificationType {
+  LEAD
+  DEAL
+  TASK
+  AI_INSIGHT
+  SYSTEM
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String?
+  name          String
+  avatar        String?
+  role          Role           @default(SALES)
+  title         String?
+  googleId      String?        @unique
+  refreshToken  String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  leads         Lead[]         @relation("LeadOwner")
+  deals         Deal[]
+  tasks         Task[]         @relation("TaskAssignee")
+  activities    Activity[]
+  notifications Notification[]
+  teamMembers   TeamMember[]
+  aiChats       AiChatMessage[]
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  members     TeamMember[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      Role     @default(SALES)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+model Lead {
+  id              String       @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  company         String
+  website         String?
+  source          String       @default("Website")
+  leadType        String?
+  value           String         @default("Medium")
+  location        String?
+  stage           LeadStage    @default(LEAD_ENTERED)
+  status          LeadStatus   @default(NEW)
+  aiScore         Int          @default(0)
+  aiClassification String?
+  aiAnalysis      String?
+  nextBestAction  String?
+  convertProbability Float      @default(0)
+  tags            String[]
+  ownerId         String?
+  owner           User?        @relation("LeadOwner", fields: [ownerId], references: [id])
+  notes           Note[]
+  activities      Activity[]
+  timeline        TimelineEvent[]
+  attachments     Attachment[]
+  deal            Deal?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([status])
+  @@index([aiScore])
+  @@index([ownerId])
+}
+
+model Deal {
+  id              String    @id @default(cuid())
+  title           String
+  value           Float     @default(0)
+  stage           DealStage @default(QUALIFICATION)
+  probability     Float     @default(0)
+  aiProbability   Float?
+  expectedClose   DateTime?
+  leadId          String?   @unique
+  lead            Lead?     @relation(fields: [leadId], references: [id])
+  ownerId         String
+  owner           User      @relation(fields: [ownerId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    Int        @default(0)
+  dueDate     DateTime?
+  assigneeId  String?
+  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  requiresApproval Boolean @default(false)
+  approved    Boolean?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Workflow {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean          @default(true)
+  trigger     String
+  actions     Json
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  automations AutomationRun[]
+}
+
+model AutomationRun {
+  id         String   @id @default(cuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+  status     String
+  result     Json?
+  createdAt  DateTime @default(now())
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String?
+  createdAt DateTime @default(now())
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  metadata  Json?
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model TimelineEvent {
+  id        String   @id @default(cuid())
+  title     String
+  description String?
+  icon      String   @default("circle")
+  color     String   @default("purple")
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+}
+
+model AiInsight {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  icon      String   @default("sparkles")
+  color     String   @default("purple")
+  priority  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model AiChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model Integration {
+  id        String   @id @default(cuid())
+  provider  String
+  name      String
+  isActive  Boolean  @default(false)
+  config    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  name      String
+  type      String
+  data      Json
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 248 249 252;
+    --foreground: 15 17 26;
+    --card: 0 0% 100%;
+    --card-foreground: 15 17 26;
+    --primary: 239 68% 66%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 15 17 26;
+    --muted: 240 5% 96%;
+    --muted-foreground: 100 7% 46%;
+    --accent: 262 83% 58%;
+    --accent-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 239 68% 66%;
+    --radius: 1rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-workspace text-foreground font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-sm border border-white/60;
+  }
+  .gradient-text {
+    @apply bg-gradient-to-r from-aether-purple to-aether-violet bg-clip-text text-transparent;
+  }
+  .gradient-btn {
+    @apply bg-gradient-primary text-white shadow-md hover:shadow-lg transition-shadow;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-200 rounded-full;
+  }
+
+  .ai-glow {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15), 0 0 40px rgba(168, 85, 247, 0.08);
+  }
+
+  .ai-glow-pulse {
+    animation: aiGlowPulse 2.5s ease-in-out infinite;
+  }
+
+  .live-pulse {
+    animation: livePulse 2s ease-in-out infinite;
+  }
+
+  .data-flow-line {
+    background: linear-gradient(90deg, transparent, #6366F1, #A855F7, transparent);
+    background-size: 200% 100%;
+    animation: dataFlow 3s linear infinite;
+  }
+
+  .intelligence-hover {
+    @apply transition-all duration-300 hover:border-indigo-200/80;
+  }
+  .intelligence-hover:hover {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.12);
+  }
+}
+
+@keyframes aiGlowPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(99, 102, 241, 0.12); }
+  50% { box-shadow: 0 0 24px rgba(168, 85, 247, 0.22); }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+
+@keyframes dataFlow {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
