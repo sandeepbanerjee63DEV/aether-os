@@ -167,6 +167,196 @@ try {
   });
 
   console.log(`[db-setup] Seeded ${createdLeads.length} leads + timeline events.`);
+
+  // ---------- DEALS ----------
+  const existingDealCount = await prisma.deal.count();
+  if (existingDealCount === 0) {
+    console.log("[db-setup] Seeding demo deals + activity...");
+
+    // Ensure a system user exists so deals have a friendly owner name.
+    const systemEmail = "system@aetheros.com";
+    let systemUser = await prisma.user.findUnique({ where: { email: systemEmail } });
+    if (!systemUser) {
+      systemUser = await prisma.user.create({
+        data: {
+          email: systemEmail,
+          name: "Raj Mehta",
+          role: "SALES",
+          title: "Account Executive",
+        },
+      });
+    }
+
+    const days = (n) => new Date(now.getTime() + n * 86400000);
+    const ago = (n) => new Date(now.getTime() - n * 86400000);
+
+    const leadByEmail = Object.fromEntries(createdLeads.map((l) => [l.email, l]));
+
+    const seedDeals = [
+      {
+        title: "TechCorp — Enterprise CRM",
+        company: "TechCorp Solutions",
+        contactName: "Rohan Sharma",
+        value: 48000,
+        stage: "NEGOTIATION",
+        probability: 75,
+        aiProbability: 82,
+        aiAnalysis:
+          "Strong engagement signals. Pricing aligned with budget. Decision-maker actively participating in technical evaluation.",
+        nextBestAction: "Send revised proposal with annual discount",
+        riskLevel: "low",
+        expectedClose: days(9),
+        leadId: leadByEmail["rohan@techcorp.io"]?.id ?? null,
+        ownerId: systemUser.id,
+      },
+      {
+        title: "Innovate Labs — Workflow Automation",
+        company: "Innovate Labs",
+        contactName: "Priya Nair",
+        value: 22500,
+        stage: "PROPOSAL",
+        probability: 55,
+        aiProbability: 61,
+        aiAnalysis:
+          "Mid-funnel deal. Champion identified but pricing still under internal review.",
+        nextBestAction: "Schedule executive alignment call",
+        riskLevel: "medium",
+        expectedClose: days(18),
+        leadId: leadByEmail["priya@innovate.com"]?.id ?? null,
+        ownerId: systemUser.id,
+      },
+      {
+        title: "CloudNine — Pilot Engagement",
+        company: "CloudNine Systems",
+        contactName: "Amit Verma",
+        value: 14000,
+        stage: "QUALIFICATION",
+        probability: 30,
+        aiProbability: 38,
+        aiAnalysis:
+          "Early-stage qualification. Needs deeper discovery on integration requirements.",
+        nextBestAction: "Run discovery workshop",
+        riskLevel: "medium",
+        expectedClose: days(35),
+        leadId: leadByEmail["amit@cloudnine.io"]?.id ?? null,
+        ownerId: systemUser.id,
+      },
+      {
+        title: "DataFlow — Analytics Suite",
+        company: "DataFlow Analytics",
+        contactName: "Sneha Kapoor",
+        value: 86000,
+        stage: "NEGOTIATION",
+        probability: 80,
+        aiProbability: 88,
+        aiAnalysis:
+          "Hot deal. Strong product-market fit signals, multiple stakeholders engaged, MSA review in progress.",
+        nextBestAction: "Finalize MSA and procurement timeline",
+        riskLevel: "low",
+        expectedClose: days(7),
+        leadId: leadByEmail["sneha@dataflow.com"]?.id ?? null,
+        ownerId: systemUser.id,
+      },
+      {
+        title: "NexGen AI — Pilot to Production",
+        company: "NexGen AI",
+        contactName: "Vikram Reddy",
+        value: 31500,
+        stage: "PROPOSAL",
+        probability: 45,
+        aiProbability: 52,
+        aiAnalysis:
+          "Pilot expansion deal. Technical buyer engaged but exec sponsor lukewarm — risk of stall.",
+        nextBestAction: "Get exec sponsor alignment",
+        riskLevel: "medium",
+        expectedClose: days(21),
+        leadId: leadByEmail["vikram@nexgen.com"]?.id ?? null,
+        ownerId: systemUser.id,
+      },
+      {
+        title: "Helios Retail — Loyalty Platform",
+        company: "Helios Retail",
+        contactName: "Ananya Iyer",
+        value: 64000,
+        stage: "CLOSED_WON",
+        probability: 100,
+        aiProbability: 100,
+        aiAnalysis:
+          "Closed-won. 6-month rollout. Strong reference candidate for retail vertical.",
+        nextBestAction: "Schedule kick-off and reference-call request",
+        riskLevel: "low",
+        expectedClose: ago(5),
+        ownerId: systemUser.id,
+      },
+    ];
+
+    const createdDeals = [];
+    for (const deal of seedDeals) {
+      // leadId is unique on Deal — skip linkage if it's already used.
+      if (deal.leadId) {
+        const existing = await prisma.deal.findUnique({ where: { leadId: deal.leadId } });
+        if (existing) deal.leadId = null;
+      }
+      const created = await prisma.deal.create({ data: deal });
+      createdDeals.push(created);
+    }
+
+    const techCorpDeal = createdDeals[0];
+    const dataFlowDeal = createdDeals[3];
+    await prisma.dealActivity.createMany({
+      data: [
+        {
+          dealId: techCorpDeal.id,
+          type: "stage",
+          title: "Moved to Negotiation",
+          description: "Pricing aligned, MSA review starting",
+          icon: "trending-up",
+          color: "orange",
+          createdAt: ago(2),
+        },
+        {
+          dealId: techCorpDeal.id,
+          type: "note",
+          title: "AI revised win probability to 82%",
+          icon: "brain",
+          color: "blue",
+          createdAt: ago(1),
+        },
+        {
+          dealId: techCorpDeal.id,
+          type: "meeting",
+          title: "Demo with VP Engineering",
+          description: "Positive feedback on real-time AI insights",
+          icon: "calendar",
+          color: "purple",
+          createdAt: new Date(now.getTime() - 0.5 * 86400000),
+        },
+        {
+          dealId: dataFlowDeal.id,
+          type: "stage",
+          title: "Moved to Negotiation",
+          description: "Final commercial terms under review",
+          icon: "trending-up",
+          color: "orange",
+          createdAt: ago(3),
+        },
+        {
+          dealId: dataFlowDeal.id,
+          type: "email",
+          title: "Sent MSA redline",
+          description: "Legal turnaround expected in 48h",
+          icon: "mail",
+          color: "yellow",
+          createdAt: ago(1),
+        },
+      ],
+    });
+
+    console.log(`[db-setup] Seeded ${createdDeals.length} deals + activity events.`);
+  } else {
+    console.log(`[db-setup] ${existingDealCount} deals already present — skipping deal seed.`);
+  }
+
   await prisma.$disconnect();
 } catch (err) {
   console.warn("[db-setup] Seeding failed (continuing build):", err?.message || err);

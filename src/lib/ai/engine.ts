@@ -60,6 +60,92 @@ export async function classifyLead(lead: Partial<Lead>): Promise<AiClassificatio
   };
 }
 
+export interface AiDealScoreResult {
+  aiProbability: number;
+  riskLevel: "low" | "medium" | "high";
+  aiAnalysis: string;
+  nextBestAction: string;
+  signals: string[];
+}
+
+interface DealScoreInput {
+  title?: string;
+  value?: number;
+  stage?: string;
+  probability?: number;
+  expectedClose?: string | Date | null;
+  company?: string | null;
+}
+
+export async function scoreDeal(deal: DealScoreInput): Promise<AiDealScoreResult> {
+  const signals: string[] = [];
+  let aiProbability = deal.probability ?? 50;
+
+  const stage = (deal.stage || "QUALIFICATION").toUpperCase();
+  if (stage === "QUALIFICATION") {
+    aiProbability = Math.min(aiProbability, 40);
+    signals.push("early-stage qualification");
+  } else if (stage === "PROPOSAL") {
+    aiProbability = Math.max(aiProbability, 45);
+    signals.push("proposal in buyer's hands");
+  } else if (stage === "NEGOTIATION") {
+    aiProbability = Math.max(aiProbability, 65);
+    signals.push("active commercial negotiation");
+  } else if (stage === "CLOSED_WON") {
+    aiProbability = 100;
+  } else if (stage === "CLOSED_LOST") {
+    aiProbability = 0;
+  }
+
+  const value = deal.value ?? 0;
+  if (value >= 50000) {
+    signals.push("high-value enterprise deal");
+    aiProbability -= 5;
+  } else if (value >= 20000) {
+    signals.push("mid-market deal size");
+  }
+
+  let daysToClose: number | null = null;
+  if (deal.expectedClose) {
+    const d = typeof deal.expectedClose === "string" ? new Date(deal.expectedClose) : deal.expectedClose;
+    daysToClose = Math.round((d.getTime() - Date.now()) / 86400000);
+    if (daysToClose < 7 && stage !== "CLOSED_WON" && stage !== "CLOSED_LOST") {
+      signals.push("close date within 7 days");
+      aiProbability += 8;
+    } else if (daysToClose > 60) {
+      signals.push("long sales cycle ahead");
+      aiProbability -= 5;
+    }
+  }
+
+  aiProbability = Math.min(100, Math.max(0, aiProbability + Math.floor(Math.random() * 6) - 3));
+
+  const riskLevel: "low" | "medium" | "high" =
+    aiProbability >= 70 ? "low" : aiProbability >= 45 ? "medium" : "high";
+
+  const aiAnalysis =
+    aiProbability >= 70
+      ? `Strong close signal. ${signals.join(". ")}. AI confidence high based on stage velocity and deal profile.`
+      : aiProbability >= 45
+        ? `Moderate momentum. ${signals.join(". ") || "Standard deal trajectory"}. Watch for stall risk.`
+        : `Stall risk detected. ${signals.join(". ") || "Limited engagement signals"}. Recommend re-engagement.`;
+
+  const nextBestAction =
+    stage === "QUALIFICATION"
+      ? "Run discovery and qualify budget"
+      : stage === "PROPOSAL"
+        ? "Schedule proposal review with decision-maker"
+        : stage === "NEGOTIATION"
+          ? aiProbability >= 70
+            ? "Finalize commercial terms and close"
+            : "Get exec sponsor alignment"
+          : stage === "CLOSED_WON"
+            ? "Kick-off implementation and request reference"
+            : "Capture loss reason and add to nurture";
+
+  return { aiProbability, riskLevel, aiAnalysis, nextBestAction, signals };
+}
+
 export async function generateEmailDraft(leadName: string, context: string): Promise<string> {
   return `Hi ${leadName},\n\nThank you for your interest in AETHER OS. ${context}\n\nI'd love to schedule a brief call to understand your goals and show how our AI-powered CRM can accelerate your pipeline.\n\nBest regards,\nAETHER OS Team`;
 }

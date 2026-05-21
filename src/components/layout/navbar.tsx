@@ -22,10 +22,11 @@ interface NavbarProps {
   subtitle?: string;
   badge?: string;
   showAddLead?: boolean;
+  showAddDeal?: boolean;
 }
 
-export function Navbar({ title, subtitle, badge, showAddLead }: NavbarProps) {
-  const { setMobileMenuOpen, setAddLeadDialogOpen } = useUiStore();
+export function Navbar({ title, subtitle, badge, showAddLead, showAddDeal }: NavbarProps) {
+  const { setMobileMenuOpen, setAddLeadDialogOpen, setAddDealDialogOpen } = useUiStore();
   const { user } = useAuthStore();
   const { data: notifData } = useQuery({
     queryKey: ["notifications"],
@@ -98,6 +99,18 @@ export function Navbar({ title, subtitle, badge, showAddLead }: NavbarProps) {
                 <Button className="hidden sm:inline-flex" onClick={() => setAddLeadDialogOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Add Lead
+                  <ChevronDown className="h-3 w-3 opacity-70" />
+                </Button>
+              </>
+            )}
+            {showAddDeal && (
+              <>
+                <Button className="sm:hidden" size="icon" onClick={() => setAddDealDialogOpen(true)} aria-label="Add deal">
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button className="hidden sm:inline-flex" onClick={() => setAddDealDialogOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add Deal
                   <ChevronDown className="h-3 w-3 opacity-70" />
                 </Button>
               </>
