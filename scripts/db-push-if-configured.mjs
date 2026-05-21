@@ -47,19 +47,19 @@ console.log("[db-setup] Schema synced. Checking if seed is needed...");
 try {
   const { PrismaClient } = await import("@prisma/client");
   const prisma = new PrismaClient();
-  const count = await prisma.lead.count();
-
-  if (count > 0) {
-    console.log(`[db-setup] ${count} leads already present — skipping seed.`);
-    await prisma.$disconnect();
-    process.exit(0);
-  }
-
-  console.log("[db-setup] Empty database detected — seeding demo data...");
+  const leadCount = await prisma.lead.count();
 
   const now = new Date();
   const minutes = (n) => new Date(now.getTime() - n * 60000);
   const hours = (n) => new Date(now.getTime() - n * 3600000);
+
+  let createdLeads = [];
+
+  if (leadCount > 0) {
+    console.log(`[db-setup] ${leadCount} leads already present — skipping lead seed.`);
+    createdLeads = await prisma.lead.findMany();
+  } else {
+    console.log("[db-setup] Empty leads table — seeding demo leads...");
 
   const seedLeads = [
     {
@@ -148,25 +148,25 @@ try {
     },
   ];
 
-  const createdLeads = [];
-  for (const lead of seedLeads) {
-    const created = await prisma.lead.create({ data: lead });
-    createdLeads.push(created);
+    for (const lead of seedLeads) {
+      const created = await prisma.lead.create({ data: lead });
+      createdLeads.push(created);
+    }
+
+    const rohan = createdLeads[0];
+    await prisma.timelineEvent.createMany({
+      data: [
+        { leadId: rohan.id, title: "Lead captured via Website", icon: "globe", color: "purple", createdAt: new Date("2025-05-10T09:00:00Z") },
+        { leadId: rohan.id, title: "AI classified as High Intent", icon: "brain", color: "blue", createdAt: new Date("2025-05-10T10:30:00Z") },
+        { leadId: rohan.id, title: "Assigned to Raj Mehta", icon: "user", color: "green", createdAt: new Date("2025-05-11T09:00:00Z") },
+        { leadId: rohan.id, title: "Follow-up email sent", icon: "mail", color: "yellow", createdAt: new Date("2025-05-12T11:00:00Z") },
+        { leadId: rohan.id, title: "Call scheduled", icon: "phone", color: "orange", createdAt: new Date("2025-05-12T14:00:00Z") },
+        { leadId: rohan.id, title: "Demo Pending", description: "Awaiting confirmation", icon: "calendar", color: "purple", createdAt: new Date("2025-05-13T09:00:00Z") },
+      ],
+    });
+
+    console.log(`[db-setup] Seeded ${createdLeads.length} leads + timeline events.`);
   }
-
-  const rohan = createdLeads[0];
-  await prisma.timelineEvent.createMany({
-    data: [
-      { leadId: rohan.id, title: "Lead captured via Website", icon: "globe", color: "purple", createdAt: new Date("2025-05-10T09:00:00Z") },
-      { leadId: rohan.id, title: "AI classified as High Intent", icon: "brain", color: "blue", createdAt: new Date("2025-05-10T10:30:00Z") },
-      { leadId: rohan.id, title: "Assigned to Raj Mehta", icon: "user", color: "green", createdAt: new Date("2025-05-11T09:00:00Z") },
-      { leadId: rohan.id, title: "Follow-up email sent", icon: "mail", color: "yellow", createdAt: new Date("2025-05-12T11:00:00Z") },
-      { leadId: rohan.id, title: "Call scheduled", icon: "phone", color: "orange", createdAt: new Date("2025-05-12T14:00:00Z") },
-      { leadId: rohan.id, title: "Demo Pending", description: "Awaiting confirmation", icon: "calendar", color: "purple", createdAt: new Date("2025-05-13T09:00:00Z") },
-    ],
-  });
-
-  console.log(`[db-setup] Seeded ${createdLeads.length} leads + timeline events.`);
 
   // ---------- DEALS ----------
   const existingDealCount = await prisma.deal.count();
