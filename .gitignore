@@ -36,6 +36,6 @@ prisma/*.db
 # local file-backed dev data store (fallback when no DB)
 /.data/
 
-# IDE
-.idea
-.vscode
+# build artifacts / scripts
+/build-output.log
+/.scripts/

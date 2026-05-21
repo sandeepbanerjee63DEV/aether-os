@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
 import { signAccessToken, signRefreshToken, AUTH_COOKIE, REFRESH_COOKIE } from "@/lib/auth/jwt";
-import { userStore, type StoredUser } from "@/lib/auth/user-store";
+import { userStore } from "@/lib/auth/user-store";
 
 interface RegisterBody {
   email?: string;
@@ -11,6 +11,19 @@ interface RegisterBody {
   name?: string;
   title?: string;
 }
+
+interface NormalizedUser {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  avatar: string | null;
+  title: string | null;
+}
+
+type RegisterResult =
+  | { conflict: true }
+  | { conflict: false; user: NormalizedUser; isFirstUser: boolean };
 
 function setAuthCookies(res: NextResponse, accessToken: string, refreshToken: string) {
   res.cookies.set(AUTH_COOKIE, accessToken, {
@@ -29,10 +42,10 @@ function setAuthCookies(res: NextResponse, accessToken: string, refreshToken: st
   });
 }
 
-async function tryPrismaRegister(body: RegisterBody) {
+async function tryPrismaRegister(body: RegisterBody): Promise<RegisterResult> {
   const email = body.email!.toLowerCase().trim();
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return { conflict: true as const };
+  if (existing) return { conflict: true };
 
   const userCount = await prisma.user.count();
   const role: Role = userCount === 0 ? Role.SUPER_ADMIN : Role.SALES;
@@ -47,13 +60,24 @@ async function tryPrismaRegister(body: RegisterBody) {
       role,
     },
   });
-  return { conflict: false as const, user, isFirstUser: userCount === 0 };
+  return {
+    conflict: false,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      avatar: user.avatar,
+      title: user.title,
+    },
+    isFirstUser: userCount === 0,
+  };
 }
 
-async function fileStoreRegister(body: RegisterBody) {
+async function fileStoreRegister(body: RegisterBody): Promise<RegisterResult> {
   const email = body.email!.toLowerCase().trim();
   const existing = await userStore.findByEmail(email);
-  if (existing) return { conflict: true as const };
+  if (existing) return { conflict: true };
 
   const userCount = await userStore.count();
   const role: Role = userCount === 0 ? Role.SUPER_ADMIN : Role.SALES;
@@ -66,7 +90,18 @@ async function fileStoreRegister(body: RegisterBody) {
     title: body.title?.trim() || (role === Role.SUPER_ADMIN ? "Founder" : "Team Member"),
     role,
   });
-  return { conflict: false as const, user, isFirstUser: userCount === 0 };
+  return {
+    conflict: false,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      avatar: user.avatar,
+      title: user.title,
+    },
+    isFirstUser: userCount === 0,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -117,7 +152,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const user = result.user as StoredUser & { id: string };
+  const user = result.user;
   const accessToken = await signAccessToken({
     sub: user.id,
     email: user.email,

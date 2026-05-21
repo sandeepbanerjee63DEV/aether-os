@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { signAccessToken, signRefreshToken, AUTH_COOKIE, REFRESH_COOKIE } from "@/lib/auth/jwt";
 import { userStore } from "@/lib/auth/user-store";
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     id: string;
     email: string;
     name: string;
-    role: string;
+    role: Role;
     avatar: string | null;
     title: string | null;
     passwordHash: string | null;
@@ -75,8 +76,7 @@ export async function POST(req: NextRequest) {
         sub: "demo-admin",
         email,
         name: "Arjun Mehta",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        role: "SUPER_ADMIN" as any,
+        role: Role.SUPER_ADMIN,
         avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=arjun",
       });
       const refreshToken = await signRefreshToken("demo-admin");
@@ -100,8 +100,7 @@ export async function POST(req: NextRequest) {
     sub: user.id,
     email: user.email,
     name: user.name,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    role: user.role as any,
+    role: user.role,
     avatar: user.avatar,
   });
   const refreshToken = await signRefreshToken(user.id);
