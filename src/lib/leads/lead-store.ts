@@ -1,12 +1,16 @@
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 
 /**
- * File-backed lead store used as a graceful fallback when Postgres / Prisma
- * is unavailable in local development. Persists to `.data/leads.json` so that
- * leads created via the UI survive dev-server restarts.
+ * Memory-first lead store with best-effort disk persistence.
  *
- * Seeds itself from `MOCK_LEADS` on first use so the dashboard never appears empty.
+ * - Local dev: persists to `<project>/.data/` so leads survive `npm run dev` restarts
+ * - Vercel / read-only FS: silently falls back to `os.tmpdir()`, and if even that
+ *   fails, lives entirely in module memory (persists across requests within the
+ *   same warm Lambda instance, ephemeral across cold starts).
+ *
+ * Swap with Prisma in production by setting DATABASE_URL.
  */
 
 export interface StoredLead {
@@ -41,29 +45,6 @@ export interface StoredTimelineEvent {
   icon: string;
   color: string;
   createdAt: string;
-}
-
-const DATA_DIR = path.join(process.cwd(), ".data");
-const LEADS_FILE = path.join(DATA_DIR, "leads.json");
-const TIMELINE_FILE = path.join(DATA_DIR, "timeline.json");
-
-async function ensureDir(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-}
-
-async function readJson<T>(file: string, fallback: T): Promise<T> {
-  try {
-    await ensureDir();
-    const raw = await fs.readFile(file, "utf-8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJson(file: string, data: unknown): Promise<void> {
-  await ensureDir();
-  await fs.writeFile(file, JSON.stringify(data, null, 2), "utf-8");
 }
 
 const SEED_LEADS: Omit<StoredLead, "createdAt">[] = [
@@ -188,22 +169,59 @@ const SEED_TIMELINE: Omit<StoredTimelineEvent, "id">[] = [
   { leadId: "lead-1", title: "Demo Pending", description: "Awaiting confirmation", icon: "calendar", color: "purple", createdAt: "2025-05-13T09:00:00Z" },
 ];
 
-let seeded = false;
+function pickDataDir(): string {
+  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (isServerless) return path.join(os.tmpdir(), "aether-os");
+  return path.join(process.cwd(), ".data");
+}
 
-async function seedIfEmpty(): Promise<void> {
-  if (seeded) return;
-  seeded = true;
-  const leads = await readJson<StoredLead[] | null>(LEADS_FILE, null);
-  if (leads === null) {
-    const now = new Date().toISOString();
-    await writeJson(LEADS_FILE, SEED_LEADS.map((l) => ({ ...l, createdAt: now })));
+const DATA_DIR = pickDataDir();
+const LEADS_FILE = path.join(DATA_DIR, "leads.json");
+const TIMELINE_FILE = path.join(DATA_DIR, "timeline.json");
+
+const cache: { leads: StoredLead[]; timeline: StoredTimelineEvent[]; loaded: boolean } = {
+  leads: [],
+  timeline: [],
+  loaded: false,
+};
+
+async function safeReadJson<T>(file: string): Promise<T | null> {
+  try {
+    const raw = await fs.readFile(file, "utf-8");
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
   }
-  const timeline = await readJson<StoredTimelineEvent[] | null>(TIMELINE_FILE, null);
-  if (timeline === null) {
-    await writeJson(
-      TIMELINE_FILE,
-      SEED_TIMELINE.map((t, i) => ({ ...t, id: `tl_seed_${i}` }))
-    );
+}
+
+async function safeWriteJson(file: string, data: unknown): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch {
+    /* read-only filesystem (e.g. Vercel) — in-memory cache is still authoritative */
+  }
+}
+
+async function ensureLoaded(): Promise<void> {
+  if (cache.loaded) return;
+  cache.loaded = true;
+
+  const leadsFromDisk = await safeReadJson<StoredLead[]>(LEADS_FILE);
+  if (leadsFromDisk?.length) {
+    cache.leads = leadsFromDisk;
+  } else {
+    const now = new Date().toISOString();
+    cache.leads = SEED_LEADS.map((l) => ({ ...l, createdAt: now }));
+    await safeWriteJson(LEADS_FILE, cache.leads);
+  }
+
+  const timelineFromDisk = await safeReadJson<StoredTimelineEvent[]>(TIMELINE_FILE);
+  if (timelineFromDisk?.length) {
+    cache.timeline = timelineFromDisk;
+  } else {
+    cache.timeline = SEED_TIMELINE.map((t, i) => ({ ...t, id: `tl_seed_${i}` }));
+    await safeWriteJson(TIMELINE_FILE, cache.timeline);
   }
 }
 
@@ -213,11 +231,9 @@ function newId(prefix: string): string {
 
 export const leadStore = {
   async list(params: { limit?: number; status?: string | null; search?: string | null } = {}): Promise<{ leads: StoredLead[]; total: number }> {
-    await seedIfEmpty();
-    let leads = await readJson<StoredLead[]>(LEADS_FILE, []);
-    if (params.status) {
-      leads = leads.filter((l) => l.status === params.status);
-    }
+    await ensureLoaded();
+    let leads = [...cache.leads];
+    if (params.status) leads = leads.filter((l) => l.status === params.status);
     if (params.search) {
       const q = params.search.toLowerCase();
       leads = leads.filter(
@@ -235,14 +251,12 @@ export const leadStore = {
   },
 
   async findById(id: string): Promise<StoredLead | null> {
-    await seedIfEmpty();
-    const leads = await readJson<StoredLead[]>(LEADS_FILE, []);
-    return leads.find((l) => l.id === id) || null;
+    await ensureLoaded();
+    return cache.leads.find((l) => l.id === id) || null;
   },
 
   async create(input: Omit<StoredLead, "id" | "createdAt" | "updatedAt">): Promise<StoredLead> {
-    await seedIfEmpty();
-    const leads = await readJson<StoredLead[]>(LEADS_FILE, []);
+    await ensureLoaded();
     const now = new Date().toISOString();
     const lead: StoredLead = {
       ...input,
@@ -250,11 +264,8 @@ export const leadStore = {
       createdAt: now,
       updatedAt: now,
     };
-    leads.unshift(lead);
-    await writeJson(LEADS_FILE, leads);
-
-    const timeline = await readJson<StoredTimelineEvent[]>(TIMELINE_FILE, []);
-    timeline.push(
+    cache.leads.unshift(lead);
+    cache.timeline.push(
       {
         id: newId("tl"),
         leadId: lead.id,
@@ -274,35 +285,37 @@ export const leadStore = {
         createdAt: now,
       }
     );
-    await writeJson(TIMELINE_FILE, timeline);
-
+    await safeWriteJson(LEADS_FILE, cache.leads);
+    await safeWriteJson(TIMELINE_FILE, cache.timeline);
     return lead;
   },
 
   async update(id: string, patch: Partial<StoredLead>): Promise<StoredLead | null> {
-    await seedIfEmpty();
-    const leads = await readJson<StoredLead[]>(LEADS_FILE, []);
-    const idx = leads.findIndex((l) => l.id === id);
+    await ensureLoaded();
+    const idx = cache.leads.findIndex((l) => l.id === id);
     if (idx < 0) return null;
-    leads[idx] = { ...leads[idx], ...patch, id, updatedAt: new Date().toISOString() };
-    await writeJson(LEADS_FILE, leads);
-    return leads[idx];
+    cache.leads[idx] = { ...cache.leads[idx], ...patch, id, updatedAt: new Date().toISOString() };
+    await safeWriteJson(LEADS_FILE, cache.leads);
+    return cache.leads[idx];
   },
 
   async remove(id: string): Promise<boolean> {
-    await seedIfEmpty();
-    const leads = await readJson<StoredLead[]>(LEADS_FILE, []);
-    const next = leads.filter((l) => l.id !== id);
-    if (next.length === leads.length) return false;
-    await writeJson(LEADS_FILE, next);
+    await ensureLoaded();
+    const before = cache.leads.length;
+    cache.leads = cache.leads.filter((l) => l.id !== id);
+    if (cache.leads.length === before) return false;
+    cache.timeline = cache.timeline.filter((t) => t.leadId !== id);
+    await safeWriteJson(LEADS_FILE, cache.leads);
+    await safeWriteJson(TIMELINE_FILE, cache.timeline);
     return true;
   },
 
   async getTimeline(leadId: string): Promise<StoredTimelineEvent[]> {
-    await seedIfEmpty();
-    const timeline = await readJson<StoredTimelineEvent[]>(TIMELINE_FILE, []);
-    const items = timeline.filter((t) => t.leadId === leadId);
-    if (items.length > 0) return items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return timeline.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    await ensureLoaded();
+    const items = cache.timeline.filter((t) => t.leadId === leadId);
+    if (items.length > 0) {
+      return items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+    return [...cache.timeline].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   },
 };
