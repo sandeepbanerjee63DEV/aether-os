@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { leadStore } from "@/lib/leads/lead-store";
 import { classifyLead } from "@/lib/ai/engine";
+import { sendLeadActionEmail, type EmailResult } from "@/lib/email/send";
+import { getSession } from "@/lib/auth/jwt";
 
 export type LeadActionType =
   | "EMAIL"
@@ -123,6 +125,22 @@ function buildPlan(action: LeadActionType, lead: LeadLike, note?: string): Actio
   }
 }
 
+function shouldSendEmail(action: LeadActionType): action is "EMAIL" | "CALL" | "DEMO" {
+  return action === "EMAIL" || action === "CALL" || action === "DEMO";
+}
+
+function appendEmailNoteToTimeline(plan: ActionPlan, emailResult: EmailResult | null): void {
+  if (!plan.timeline || !emailResult) return;
+  const base = plan.timeline.description || "";
+  if (emailResult.sent) {
+    plan.timeline.description = `${base ? base + " " : ""}Email delivered to ${emailResult.to}.`.trim();
+  } else if (emailResult.preview) {
+    plan.timeline.description = `${base ? base + " " : ""}Email preview logged (configure RESEND_API_KEY to send).`.trim();
+  } else if (emailResult.reason) {
+    plan.timeline.description = `${base ? base + " " : ""}Email send failed: ${emailResult.reason}`.trim();
+  }
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let body: ActionBody = {};
@@ -135,6 +153,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!action) {
     return NextResponse.json({ error: "Missing action" }, { status: 400 });
   }
+
+  const session = await getSession().catch(() => null);
+  const rep = session
+    ? { name: session.name, email: session.email }
+    : undefined;
 
   try {
     const existing = await prisma.lead.findUnique({ where: { id } });
@@ -156,6 +179,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       plan.patch.tags = ai.tags;
     }
 
+    let emailResult: EmailResult | null = null;
+    if (shouldSendEmail(action) && existing.email) {
+      emailResult = await sendLeadActionEmail({
+        kind: action,
+        lead: {
+          firstName: existing.firstName,
+          lastName: existing.lastName,
+          email: existing.email,
+          company: existing.company,
+          aiAnalysis: existing.aiAnalysis,
+          aiClassification: existing.aiClassification,
+        },
+        rep,
+      });
+      appendEmailNoteToTimeline(plan, emailResult);
+    }
+
     const lead = await prisma.lead.update({
       where: { id },
       data: plan.patch as never,
@@ -173,7 +213,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       });
     }
-    return NextResponse.json({ lead, timelineEvent });
+    return NextResponse.json({ lead, timelineEvent, emailResult });
   } catch {
     const existing = await leadStore.findById(id);
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -194,11 +234,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       plan.patch.tags = ai.tags;
     }
 
+    let emailResult: EmailResult | null = null;
+    if (shouldSendEmail(action) && existing.email) {
+      emailResult = await sendLeadActionEmail({
+        kind: action,
+        lead: {
+          firstName: existing.firstName,
+          lastName: existing.lastName,
+          email: existing.email,
+          company: existing.company,
+          aiAnalysis: existing.aiAnalysis,
+          aiClassification: existing.aiClassification,
+        },
+        rep,
+      });
+      appendEmailNoteToTimeline(plan, emailResult);
+    }
+
     const lead = await leadStore.update(id, plan.patch);
     let timelineEvent = null;
     if (plan.timeline) {
       timelineEvent = await leadStore.addTimelineEvent(id, plan.timeline);
     }
-    return NextResponse.json({ lead, timelineEvent });
+    return NextResponse.json({ lead, timelineEvent, emailResult });
   }
 }

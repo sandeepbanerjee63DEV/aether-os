@@ -99,6 +99,7 @@ interface RecentAction {
   type: Exclude<ActionType, "REGENERATE">;
   label: string;
   at: number;
+  email?: { sent: boolean; preview: boolean; to?: string; reason?: string } | null;
 }
 
 export function LeadDetailsPanel() {
@@ -153,14 +154,19 @@ export function LeadDetailsPanel() {
       }
       return { action, payload: await res.json() };
     },
-    onSuccess: ({ action }) => {
+    onSuccess: ({ action, payload }) => {
       queryClient.invalidateQueries({ queryKey: ["lead-detail", selectedLeadId] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["timeline", selectedLeadId] });
       if (action !== "REGENERATE") {
         const opt = ACTION_OPTIONS.find((o) => o.id === action);
         if (opt) {
-          setRecentAction({ type: opt.id, label: opt.label, at: Date.now() });
+          setRecentAction({
+            type: opt.id,
+            label: opt.label,
+            at: Date.now(),
+            email: payload?.emailResult ?? null,
+          });
         }
       }
       setPendingAction(null);
@@ -332,12 +338,39 @@ export function LeadDetailsPanel() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700"
+                className={cn(
+                  "mt-2 flex flex-col gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium",
+                  recentAction.email && !recentAction.email.sent && !recentAction.email.preview
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-emerald-50 text-emerald-700"
+                )}
               >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                {recentAction.label.toLowerCase().startsWith("mark")
-                  ? "Action marked complete · AI refreshed"
-                  : `Done — ${recentAction.label.toLowerCase()}`}
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {recentAction.label.toLowerCase().startsWith("mark")
+                    ? "Action marked complete · AI refreshed"
+                    : `Done — ${recentAction.label.toLowerCase()}`}
+                </span>
+                {recentAction.email && (
+                  <span className="flex items-center gap-1.5 pl-5 text-[11px] font-normal">
+                    {recentAction.email.sent ? (
+                      <>
+                        <Mail className="h-3 w-3" />
+                        Email delivered to {recentAction.email.to}
+                      </>
+                    ) : recentAction.email.preview ? (
+                      <>
+                        <Mail className="h-3 w-3" />
+                        Email preview logged · set RESEND_API_KEY to send live
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-3 w-3" />
+                        Email failed{recentAction.email.reason ? `: ${recentAction.email.reason}` : ""}
+                      </>
+                    )}
+                  </span>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
