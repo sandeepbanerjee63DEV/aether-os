@@ -62,6 +62,91 @@ enum NotificationType {
   TASK
   AI_INSIGHT
   SYSTEM
+  TEAM
+  SECURITY
+}
+
+enum UserStatus {
+  ACTIVE
+  AWAY
+  SUSPENDED
+  PENDING_INVITE
+  INACTIVE
+}
+
+enum AccessLevel {
+  ADMIN
+  MANAGER
+  STAFF
+  VIEWER
+}
+
+enum AssignmentEntity {
+  LEAD
+  DEAL
+  TASK
+  PROJECT
+  WORKFLOW
+  SUPPORT_TICKET
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  REASSIGNED
+  COMPLETED
+  ESCALATED
+  CANCELLED
+}
+
+enum SessionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  SUSPICIOUS
+}
+
+enum AccessEventType {
+  LOGIN
+  LOGOUT
+  FAILED_LOGIN
+  PASSWORD_CHANGE
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  PERMISSION_GRANTED
+  PERMISSION_REVOKED
+  SESSION_REVOKED
+  SUSPICIOUS_ACTIVITY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ASSIGN
+  ROLE_CHANGE
+  DEPARTMENT_CHANGE
+  INVITE
+  SUSPEND
+  RESTORE
+  BULK_OPERATION
+}
+
+enum AiRecommendationType {
+  WORKLOAD_IMBALANCE
+  INACTIVE_MEMBER
+  ASSIGNMENT_ROUTING
+  DEPARTMENT_OVERLOAD
+  PERMISSION_CLEANUP
+  SECURITY_RISK
+  PRODUCTIVITY_ANOMALY
+  STAFFING_GAP
+}
+
+enum AiRecommendationSeverity {
+  INFO
+  ADVISORY
+  WARNING
+  CRITICAL
 }
 
 model User {
@@ -71,10 +156,28 @@ model User {
   name          String
   avatar        String?
   role          Role           @default(SALES)
+  accessLevel   AccessLevel    @default(STAFF)
   title         String?
+  phone         String?
+  location      String?
+  timezone      String?        @default("Asia/Kolkata")
+  status        UserStatus     @default(ACTIVE)
+  workloadPct   Int            @default(0)
+  operationalScore Int         @default(70)
+  lastActiveAt  DateTime?
+  invitedById   String?
+  invitedBy     User?          @relation("UserInvites", fields: [invitedById], references: [id])
+  invitees      User[]         @relation("UserInvites")
+  departmentId  String?
+  department    Department?    @relation("DepartmentMembers", fields: [departmentId], references: [id])
+  leadsOfDepartment Department[] @relation("DepartmentLead")
+  customRoleId  String?
+  customRole    RoleDefinition? @relation(fields: [customRoleId], references: [id])
   googleId      String?        @unique
   refreshToken  String?
+  twoFactorEnabled Boolean     @default(false)
   isActive      Boolean        @default(true)
+  deletedAt     DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   leads         Lead[]         @relation("LeadOwner")
@@ -84,6 +187,17 @@ model User {
   notifications Notification[]
   teamMembers   TeamMember[]
   aiChats       AiChatMessage[]
+  assignments   Assignment[]   @relation("AssignmentAssignee")
+  reassignedAssignments Assignment[] @relation("AssignmentReassignedBy")
+  sessions      UserSession[]
+  devices       Device[]
+  accessLogs    AccessLog[]
+  auditEntries  AuditLog[]     @relation("AuditActor")
+  auditTargets  AuditLog[]     @relation("AuditTarget")
+
+  @@index([departmentId])
+  @@index([status])
+  @@index([role])
 }
 
 model Team {
@@ -306,4 +420,191 @@ model Report {
   type      String
   data      Json
   createdAt DateTime @default(now())
+}
+
+// =====================================================================
+// TEAM MODULE
+// =====================================================================
+
+model Department {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  slug         String   @unique
+  description  String?
+  color        String   @default("indigo")
+  icon         String   @default("briefcase")
+  leadId       String?
+  lead         User?    @relation("DepartmentLead", fields: [leadId], references: [id])
+  parentId     String?
+  parent       Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children     Department[] @relation("DepartmentHierarchy")
+  members      User[]   @relation("DepartmentMembers")
+  capacity     Int      @default(20)
+  healthScore  Int      @default(85)
+  isActive     Boolean  @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([isActive])
+}
+
+model RoleDefinition {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  name         String
+  description  String?
+  baseRole     Role     @default(SALES)
+  color        String   @default("indigo")
+  icon         String   @default("shield")
+  isSystem     Boolean  @default(false)
+  rank         Int      @default(50)
+  permissions  Json     // string[] of permission keys
+  members      User[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Assignment {
+  id             String           @id @default(cuid())
+  entityType     AssignmentEntity
+  entityId       String
+  entityLabel    String
+  assigneeId     String
+  assignee       User             @relation("AssignmentAssignee", fields: [assigneeId], references: [id])
+  status         AssignmentStatus @default(ACTIVE)
+  priority       Int              @default(0)
+  workloadWeight Int              @default(1)
+  aiSuggested    Boolean          @default(false)
+  aiReason       String?
+  reassignedById String?
+  reassignedBy   User?            @relation("AssignmentReassignedBy", fields: [reassignedById], references: [id])
+  reassignedFromId String?
+  notes          String?
+  metadata       Json?
+  closedAt       DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([assigneeId])
+  @@index([entityType, entityId])
+  @@index([status])
+}
+
+model UserSession {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       SessionStatus @default(ACTIVE)
+  ipAddress    String?
+  ipCountry    String?
+  ipCity       String?
+  userAgent    String?
+  browser      String?
+  os           String?
+  deviceId     String?
+  device       Device?       @relation(fields: [deviceId], references: [id])
+  lastActiveAt DateTime      @default(now())
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  riskScore    Int           @default(0)
+  createdAt    DateTime      @default(now())
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Device {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  fingerprint String        @unique
+  type        String        @default("desktop") // desktop | mobile | tablet
+  os          String?
+  browser     String?
+  trusted     Boolean       @default(false)
+  lastSeenAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  sessions    UserSession[]
+
+  @@index([userId])
+}
+
+model AccessLog {
+  id         String          @id @default(cuid())
+  userId     String?
+  user       User?           @relation(fields: [userId], references: [id])
+  eventType  AccessEventType
+  ipAddress  String?
+  userAgent  String?
+  location   String?
+  success    Boolean         @default(true)
+  riskScore  Int             @default(0)
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  action     AuditAction
+  actorId    String?
+  actor      User?       @relation("AuditActor", fields: [actorId], references: [id])
+  targetId   String?
+  target     User?       @relation("AuditTarget", fields: [targetId], references: [id])
+  entityType String      // "USER" | "ROLE" | "DEPARTMENT" | "ASSIGNMENT" | "SETTING"
+  entityId   String?
+  summary    String
+  diff       Json?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model AiRecommendation {
+  id          String                   @id @default(cuid())
+  type        AiRecommendationType
+  severity    AiRecommendationSeverity @default(ADVISORY)
+  title       String
+  message     String
+  rationale   String?
+  targetType  String?  // "USER" | "DEPARTMENT" | "ASSIGNMENT" | "ROLE"
+  targetId    String?
+  suggestedAction String?
+  confidence  Int      @default(70)
+  isResolved  Boolean  @default(false)
+  resolvedAt  DateTime?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([type])
+  @@index([severity])
+  @@index([isResolved])
+}
+
+model TeamSettings {
+  id                       String   @id @default("singleton")
+  inviteRequiresApproval   Boolean  @default(false)
+  defaultAccessLevel       AccessLevel @default(STAFF)
+  defaultDepartmentId      String?
+  allowSelfInvite          Boolean  @default(false)
+  emailDomainWhitelist     String[] @default([])
+  autoAssignmentEnabled    Boolean  @default(true)
+  autoAssignmentStrategy   String   @default("round_robin") // round_robin | workload | ai
+  workloadCeiling          Int      @default(85)
+  notifyOnInvite           Boolean  @default(true)
+  notifyOnSuspiciousLogin  Boolean  @default(true)
+  notifyOnWorkloadAlert    Boolean  @default(true)
+  visibilityMode           String   @default("department") // global | department | private
+  sessionTimeoutMinutes    Int      @default(60)
+  twoFactorRequired        Boolean  @default(false)
+  updatedAt                DateTime @updatedAt
 }

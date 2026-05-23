@@ -357,6 +357,67 @@ try {
     console.log(`[db-setup] ${existingDealCount} deals already present — skipping deal seed.`);
   }
 
+  // ---------- TEAM MODULE ----------
+  try {
+    const existingDeptCount = await prisma.department.count();
+    if (existingDeptCount === 0) {
+      console.log("[db-setup] Seeding team module: departments, roles, settings...");
+
+      const departments = [
+        { name: "Sales", slug: "sales", description: "Pipeline ownership, deal closure, account expansion.", color: "indigo", icon: "target", capacity: 12, healthScore: 88 },
+        { name: "Operations", slug: "operations", description: "Workflow execution, process automation, operational uptime.", color: "purple", icon: "workflow", capacity: 10, healthScore: 81 },
+        { name: "Support", slug: "support", description: "Customer success, ticket resolution, retention.", color: "amber", icon: "headphones", capacity: 8, healthScore: 76 },
+        { name: "Marketing", slug: "marketing", description: "Demand generation, brand, content, lifecycle.", color: "blue", icon: "megaphone", capacity: 6, healthScore: 72 },
+        { name: "Finance", slug: "finance", description: "Revenue ops, billing, compliance, audit.", color: "emerald", icon: "credit-card", capacity: 4, healthScore: 91 },
+      ];
+
+      for (const d of departments) {
+        await prisma.department.create({ data: d });
+      }
+      console.log(`[db-setup] Seeded ${departments.length} departments.`);
+
+      const roleDefs = [
+        { key: "super_admin", name: "Super Admin", description: "Workspace owner. All privileges.", baseRole: "SUPER_ADMIN", color: "purple", icon: "crown", isSystem: true, rank: 100, permissions: [] },
+        { key: "admin", name: "Admin", description: "Manages workspace, RBAC, integrations, and billing.", baseRole: "ADMIN", color: "indigo", icon: "shield", isSystem: true, rank: 80, permissions: [] },
+        { key: "sales_manager", name: "Sales Manager", description: "Oversees pipeline, assignments, forecasts.", baseRole: "MANAGER", color: "blue", icon: "trending-up", isSystem: true, rank: 65, permissions: [] },
+        { key: "ops_lead", name: "Operations Lead", description: "Workflow + assignment routing.", baseRole: "MANAGER", color: "purple", icon: "workflow", isSystem: true, rank: 65, permissions: [] },
+        { key: "support_manager", name: "Support Manager", description: "Customer success.", baseRole: "MANAGER", color: "amber", icon: "headphones", isSystem: true, rank: 60, permissions: [] },
+        { key: "finance_viewer", name: "Finance Viewer", description: "Read-only audit access.", baseRole: "VIEWER", color: "emerald", icon: "credit-card", isSystem: true, rank: 25, permissions: [] },
+      ];
+      for (const r of roleDefs) {
+        await prisma.roleDefinition.create({ data: r });
+      }
+      console.log(`[db-setup] Seeded ${roleDefs.length} role definitions.`);
+
+      const existingSettings = await prisma.teamSettings.findUnique({ where: { id: "singleton" } });
+      if (!existingSettings) {
+        await prisma.teamSettings.create({
+          data: {
+            id: "singleton",
+            inviteRequiresApproval: true,
+            defaultAccessLevel: "STAFF",
+            allowSelfInvite: false,
+            emailDomainWhitelist: ["aetheros.com"],
+            autoAssignmentEnabled: true,
+            autoAssignmentStrategy: "ai",
+            workloadCeiling: 85,
+            notifyOnInvite: true,
+            notifyOnSuspiciousLogin: true,
+            notifyOnWorkloadAlert: true,
+            visibilityMode: "department",
+            sessionTimeoutMinutes: 60,
+            twoFactorRequired: false,
+          },
+        });
+        console.log("[db-setup] Seeded workspace team settings.");
+      }
+    } else {
+      console.log(`[db-setup] ${existingDeptCount} departments already present — skipping team seed.`);
+    }
+  } catch (teamErr) {
+    console.warn("[db-setup] Team seed failed (continuing):", teamErr?.message || teamErr);
+  }
+
   await prisma.$disconnect();
 } catch (err) {
   console.warn("[db-setup] Seeding failed (continuing build):", err?.message || err);
