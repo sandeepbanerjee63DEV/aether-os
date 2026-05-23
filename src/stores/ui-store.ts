@@ -1,5 +1,16 @@
 import { create } from "zustand";
 
+export type LeadStatusFilter =
+  | "ALL"
+  | "HOT"
+  | "WARM"
+  | "AI_CLASSIFIED"
+  | "ASSIGNED"
+  | "FOLLOW_UP"
+  | "NURTURING";
+
+export type LeadSort = "recent" | "score" | "name" | "probability";
+
 interface UiState {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
@@ -11,6 +22,10 @@ interface UiState {
   aetherAiExpanded: boolean;
   addLeadDialogOpen: boolean;
   addDealDialogOpen: boolean;
+  leadStatusFilter: LeadStatusFilter;
+  leadSearch: string;
+  leadSort: LeadSort;
+  leadMinScore: number;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -23,6 +38,11 @@ interface UiState {
   setAetherAiExpanded: (expanded: boolean) => void;
   setAddLeadDialogOpen: (open: boolean) => void;
   setAddDealDialogOpen: (open: boolean) => void;
+  setLeadStatusFilter: (filter: LeadStatusFilter) => void;
+  setLeadSearch: (search: string) => void;
+  setLeadSort: (sort: LeadSort) => void;
+  setLeadMinScore: (score: number) => void;
+  resetLeadFilters: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -36,6 +56,10 @@ export const useUiStore = create<UiState>((set) => ({
   aetherAiExpanded: false,
   addLeadDialogOpen: false,
   addDealDialogOpen: false,
+  leadStatusFilter: "ALL",
+  leadSearch: "",
+  leadSort: "recent",
+  leadMinScore: 0,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -48,4 +72,15 @@ export const useUiStore = create<UiState>((set) => ({
   setAetherAiExpanded: (expanded) => set({ aetherAiExpanded: expanded }),
   setAddLeadDialogOpen: (open) => set({ addLeadDialogOpen: open }),
   setAddDealDialogOpen: (open) => set({ addDealDialogOpen: open }),
+  setLeadStatusFilter: (filter) => set({ leadStatusFilter: filter }),
+  setLeadSearch: (search) => set({ leadSearch: search }),
+  setLeadSort: (sort) => set({ leadSort: sort }),
+  setLeadMinScore: (score) => set({ leadMinScore: score }),
+  resetLeadFilters: () =>
+    set({
+      leadStatusFilter: "ALL",
+      leadSearch: "",
+      leadSort: "recent",
+      leadMinScore: 0,
+    }),
 }));

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Globe, Brain, User, Mail, Phone, Calendar } from "lucide-react";
+import { Globe, Brain, User, Mail, Phone, Calendar, CheckCircle2, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,6 +16,8 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   mail: Mail,
   phone: Phone,
   calendar: Calendar,
+  check: CheckCircle2,
+  sparkles: Sparkles,
 };
 
 const COLOR_MAP: Record<string, string> = {

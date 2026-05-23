@@ -318,4 +318,23 @@ export const leadStore = {
     }
     return [...cache.timeline].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   },
+
+  async addTimelineEvent(
+    leadId: string,
+    event: { title: string; description?: string | null; icon?: string; color?: string }
+  ): Promise<StoredTimelineEvent> {
+    await ensureLoaded();
+    const created: StoredTimelineEvent = {
+      id: newId("tl"),
+      leadId,
+      title: event.title,
+      description: event.description ?? null,
+      icon: event.icon || "circle",
+      color: event.color || "purple",
+      createdAt: new Date().toISOString(),
+    };
+    cache.timeline.push(created);
+    await safeWriteJson(TIMELINE_FILE, cache.timeline);
+    return created;
+  },
 };
