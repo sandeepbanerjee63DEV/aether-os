@@ -26,6 +26,7 @@ interface UiState {
   leadSearch: string;
   leadSort: LeadSort;
   leadMinScore: number;
+  expandedSections: Record<string, boolean>;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -43,6 +44,8 @@ interface UiState {
   setLeadSort: (sort: LeadSort) => void;
   setLeadMinScore: (score: number) => void;
   resetLeadFilters: () => void;
+  toggleSection: (id: string) => void;
+  setSectionExpanded: (id: string, expanded: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -60,6 +63,13 @@ export const useUiStore = create<UiState>((set) => ({
   leadSearch: "",
   leadSort: "recent",
   leadMinScore: 0,
+  expandedSections: {
+    command: true,
+    workflows: true,
+    intelligence: true,
+    automation: false,
+    settings: false,
+  },
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -83,4 +93,12 @@ export const useUiStore = create<UiState>((set) => ({
       leadSort: "recent",
       leadMinScore: 0,
     }),
+  toggleSection: (id) =>
+    set((s) => ({
+      expandedSections: { ...s.expandedSections, [id]: !s.expandedSections[id] },
+    })),
+  setSectionExpanded: (id, expanded) =>
+    set((s) => ({
+      expandedSections: { ...s.expandedSections, [id]: expanded },
+    })),
 }));
