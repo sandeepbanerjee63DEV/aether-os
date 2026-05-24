@@ -2,15 +2,23 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Filter, ChevronDown, Plus } from "lucide-react";
+import { Filter, ChevronDown, Plus, Sparkles, UserCog, ArrowRightLeft, Wand2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn, formatRelativeTime, getInitials } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
 import { STAGE_LABEL, type DealStage } from "@/lib/deals/stages";
+
+interface RowOwner {
+  id: string;
+  name: string;
+  avatar: string | null;
+  role: string;
+}
 
 interface DealRow {
   id: string;
@@ -22,7 +30,19 @@ interface DealRow {
   probability: number;
   aiProbability: number | null;
   updatedAt: string;
+  owner?: RowOwner | null;
+  ownerName?: string | null;
+  assignmentType?: string;
 }
+
+const ASSIGN_META: Record<string, { icon: typeof Sparkles; tone: string; title: string }> = {
+  AI: { icon: Sparkles, tone: "bg-gradient-to-br from-indigo-500 to-purple-500", title: "AI-routed" },
+  MANUAL: { icon: UserCog, tone: "bg-gradient-to-br from-slate-700 to-slate-900", title: "Manual" },
+  ROUND_ROBIN: { icon: ArrowRightLeft, tone: "bg-gradient-to-br from-amber-500 to-orange-500", title: "Round-robin" },
+  WORKLOAD: { icon: Wand2, tone: "bg-gradient-to-br from-emerald-500 to-teal-500", title: "Workload" },
+  RULE: { icon: Wand2, tone: "bg-gradient-to-br from-blue-500 to-cyan-500", title: "Rule" },
+  REASSIGNED: { icon: ArrowRightLeft, tone: "bg-gradient-to-br from-rose-500 to-pink-500", title: "Reassigned" },
+};
 
 const STAGE_VARIANT: Record<
   DealStage,
@@ -144,9 +164,41 @@ export function ActiveDealsList() {
                         </span>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-400">
-                      Updated {formatRelativeTime(deal.updatedAt)}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-slate-400">
+                        Updated {formatRelativeTime(deal.updatedAt)}
+                      </p>
+                      {(deal.owner || deal.ownerName) && (
+                        <div className="flex items-center gap-1.5">
+                          <div className="relative">
+                            <Avatar className="h-4 w-4">
+                              <AvatarImage src={deal.owner?.avatar || undefined} />
+                              <AvatarFallback className="bg-indigo-50 text-[7px] font-bold text-indigo-700">
+                                {getInitials(deal.owner?.name ?? deal.ownerName ?? "?")}
+                              </AvatarFallback>
+                            </Avatar>
+                            {deal.assignmentType && ASSIGN_META[deal.assignmentType] && (() => {
+                              const meta = ASSIGN_META[deal.assignmentType];
+                              const Icon = meta.icon;
+                              return (
+                                <span
+                                  title={meta.title}
+                                  className={cn(
+                                    "absolute -bottom-0.5 -right-0.5 flex h-2 w-2 items-center justify-center rounded-full text-white",
+                                    meta.tone,
+                                  )}
+                                >
+                                  <Icon className="h-1 w-1" />
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <span className="max-w-[80px] truncate text-[10px] font-medium text-slate-600">
+                            {deal.owner?.name?.split(" ")[0] ?? deal.ownerName?.split(" ")[0]}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </button>
                 </motion.li>
               );

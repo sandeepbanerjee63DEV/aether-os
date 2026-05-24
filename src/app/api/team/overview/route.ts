@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { teamStore } from "@/lib/team/team-store";
 import { generateRecommendations, workspaceHealth } from "@/lib/team/ai";
 import { leadStore } from "@/lib/leads/lead-store";
+import { dealStore } from "@/lib/deals/deal-store";
 
 export async function GET() {
   const snap = await teamStore.snapshot();
   const { leads } = await leadStore.list({});
+  const { deals } = await dealStore.list({});
 
   const recs = generateRecommendations({
     members: snap.members,
@@ -14,6 +16,7 @@ export async function GET() {
     sessions: snap.sessions,
     accessLogs: snap.accessLogs,
     leads,
+    deals,
   });
   await teamStore.setRecommendations(recs);
 

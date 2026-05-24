@@ -327,3 +327,326 @@ export function leadAssignmentPriority(lead: Pick<LeadLike, "value" | "aiScore">
   const intent = lead.aiScore;
   return Math.round(value * 0.5 + intent * 0.5);
 }
+
+// =====================================================================
+// DEAL ROUTING — mirrors lead routing but with revenue-aware scoring.
+// =====================================================================
+
+export type DealStageLike = "QUALIFICATION" | "PROPOSAL" | "NEGOTIATION" | "CLOSED_WON" | "CLOSED_LOST";
+
+export interface DealLike {
+  id: string;
+  title: string;
+  company: string | null;
+  contactName: string | null;
+  value: number;
+  stage: DealStageLike;
+  probability: number;
+  aiProbability: number | null;
+  riskLevel: string | null;
+  expectedClose: string | null;
+  leadId: string | null;
+}
+
+/**
+ * Maps deal signals to the *primary* department that should own execution.
+ * High-value enterprise deals favor Sales; integration-heavy or rollout deals
+ * favor Operations; expansion / renewal deals favor Support.
+ */
+export function inferDepartmentForDeal(
+  deal: Pick<DealLike, "title" | "company" | "stage" | "value">,
+): string | null {
+  const haystack = `${deal.title ?? ""} ${deal.company ?? ""}`.toLowerCase();
+  if (/support|renewal|retention|onboarding|rollout/.test(haystack)) return "dept-support";
+  if (/workflow|automation|integration|operations|process|pilot/.test(haystack)) return "dept-ops";
+  if (/billing|invoice|procurement|finance|msa/.test(haystack)) return "dept-finance";
+  // Default: revenue execution lives in Sales
+  return "dept-sales";
+}
+
+/**
+ * Infer the supporting departments based on deal value, stage, and signals.
+ * Returns 0-3 department ids excluding the primary department.
+ */
+export function inferSupportingDepartments(
+  deal: Pick<DealLike, "title" | "company" | "stage" | "value">,
+  primaryDeptId: string | null,
+): string[] {
+  const haystack = `${deal.title ?? ""} ${deal.company ?? ""}`.toLowerCase();
+  const candidates = new Set<string>();
+
+  // Enterprise / high-value deals always pull in Finance + Ops
+  if (deal.value >= 50000) {
+    candidates.add("dept-finance");
+    candidates.add("dept-ops");
+  } else if (deal.value >= 20000) {
+    candidates.add("dept-ops");
+  }
+
+  // Negotiation / closed-won pulls Finance in for paperwork
+  if (deal.stage === "NEGOTIATION" || deal.stage === "CLOSED_WON") {
+    candidates.add("dept-finance");
+  }
+
+  // Long-running rollout / pilot pulls Ops + Support
+  if (/rollout|onboarding|pilot|implementation/.test(haystack)) {
+    candidates.add("dept-ops");
+    candidates.add("dept-support");
+  }
+
+  if (primaryDeptId) candidates.delete(primaryDeptId);
+  return Array.from(candidates);
+}
+
+/**
+ * Compute the workload weight contribution of a deal. Higher-value deals consume
+ * more capacity; closed deals consume none.
+ */
+export function dealWorkloadWeight(
+  deal: Pick<DealLike, "value" | "stage" | "aiProbability" | "probability">,
+): number {
+  if (deal.stage === "CLOSED_WON" || deal.stage === "CLOSED_LOST") return 0;
+  // Base weight from value: $0-10k=4, $10-25k=6, $25-50k=8, $50-100k=10, $100k+=12
+  let base = 4;
+  if (deal.value >= 100000) base = 12;
+  else if (deal.value >= 50000) base = 10;
+  else if (deal.value >= 25000) base = 8;
+  else if (deal.value >= 10000) base = 6;
+  // Late-stage / high-probability deals are heavier (more touchpoints)
+  const prob = deal.aiProbability ?? deal.probability ?? 0;
+  const stageBoost = deal.stage === "NEGOTIATION" ? 2 : deal.stage === "PROPOSAL" ? 1 : 0;
+  const probBoost = prob >= 80 ? 2 : prob >= 60 ? 1 : 0;
+  return base + stageBoost + probBoost;
+}
+
+/**
+ * Compute the priority (0-100) of a deal-derived assignment.
+ * Blends revenue value with AI close-probability.
+ */
+export function dealAssignmentPriority(deal: Pick<DealLike, "value" | "aiProbability" | "probability">): number {
+  // Normalize value to 0-100 (cap at $100k = 100 priority points from value alone)
+  const valueScore = Math.min(100, (deal.value / 1000));
+  const probScore = deal.aiProbability ?? deal.probability ?? 50;
+  return Math.round(valueScore * 0.6 + probScore * 0.4);
+}
+
+function buildDealSignals(input: {
+  member: StoredMember;
+  deal: DealLike;
+  preferredDeptId: string | null;
+  workloadCeiling: number;
+  recentAssignmentsCount: number;
+}): { score: number; reason: string; signals: RoutingCandidate["signals"] } {
+  const { member, deal, preferredDeptId, workloadCeiling, recentAssignmentsCount } = input;
+  const signals: RoutingCandidate["signals"] = [];
+
+  // Start from team-module base score for the DEAL entity
+  const base = scoreAssignmentMatch({ candidate: member, entityType: "DEAL", workloadCeiling });
+  let score = base.score;
+
+  // Department alignment
+  if (preferredDeptId && member.departmentId === preferredDeptId) {
+    score += 10;
+    signals.push({ label: "Department match", delta: 10, tone: "positive" });
+  } else if (preferredDeptId && member.departmentId && member.departmentId !== preferredDeptId) {
+    score -= 4;
+    signals.push({ label: "Different department", delta: -4, tone: "negative" });
+  }
+
+  // Revenue × workload interaction — pushing a high-value deal onto an overloaded
+  // owner hurts more than a small deal.
+  const isHighValue = deal.value >= 50000;
+  const isMidValue = deal.value >= 20000 && deal.value < 50000;
+  if (isHighValue && member.workloadPct > 80) {
+    score -= 10;
+    signals.push({ label: "Enterprise deal on overloaded owner", delta: -10, tone: "negative" });
+  } else if (isHighValue && member.workloadPct < 60) {
+    score += 8;
+    signals.push({ label: "Enterprise deal with capacity", delta: 8, tone: "positive" });
+  } else if (isMidValue && member.workloadPct > 90) {
+    score -= 5;
+  }
+
+  // Late-stage deals benefit from senior owners (MANAGER+)
+  const isLateStage = deal.stage === "NEGOTIATION" || deal.stage === "PROPOSAL";
+  if (isLateStage && (member.role === "MANAGER" || member.role === "ADMIN" || member.role === "SUPER_ADMIN")) {
+    score += 6;
+    signals.push({ label: `Senior owner for ${deal.stage.toLowerCase()}`, delta: 6, tone: "positive" });
+  }
+
+  // Operational score boost for high-probability deals
+  const prob = deal.aiProbability ?? deal.probability ?? 0;
+  if (prob >= 75 && member.operationalScore >= 80) {
+    score += 5;
+    signals.push({ label: "High ops-score for hot deal", delta: 5, tone: "positive" });
+  }
+
+  // Recency — round-robin fairness across DEAL assignments
+  if (recentAssignmentsCount >= 3) {
+    score -= 4;
+    signals.push({ label: "Already received 3+ deals recently", delta: -4, tone: "negative" });
+  }
+
+  // Availability check
+  const idleHours = (Date.now() - (member.lastActiveAt ? new Date(member.lastActiveAt).getTime() : 0)) / 3600000;
+  if (idleHours > 48 && idleHours < 24 * 7) {
+    score -= 6;
+    signals.push({ label: "Idle for 48+ hours", delta: -6, tone: "negative" });
+  } else if (idleHours < 4) {
+    signals.push({ label: "Active right now", delta: 0, tone: "positive" });
+  }
+
+  // Workload headroom (visible signal)
+  const headroom = workloadCeiling - member.workloadPct;
+  if (headroom >= 25) {
+    signals.push({ label: `${headroom}pp workload headroom`, delta: 0, tone: "positive" });
+  } else if (headroom <= 10) {
+    signals.push({ label: `Only ${Math.max(0, headroom)}pp headroom`, delta: 0, tone: "negative" });
+  }
+
+  // Continuity signal — if the deal is linked to a lead and member.id matches the
+  // hint passed in (caller-side check), bonus is added externally. Here we surface
+  // a continuity opportunity for the reason text.
+  if (isLateStage) {
+    signals.push({ label: `Stage: ${deal.stage}`, delta: 0, tone: "neutral" });
+  }
+
+  score = Math.round(Math.min(100, Math.max(0, score)));
+
+  const positives = signals.filter((s) => s.tone === "positive" && s.delta >= 0).slice(0, 2);
+  const reasonParts: string[] = [];
+  if (positives.length) {
+    reasonParts.push(positives.map((s) => s.label.toLowerCase()).join(" + "));
+  }
+  if (!positives.length) reasonParts.push(base.reason.replace(/\.$/, ""));
+
+  const reason = `${reasonParts.join(", ")}.`;
+  return { score, reason, signals };
+}
+
+/**
+ * Route a deal to the best execution owner.
+ *
+ * Returns the top candidate + up to 3 alternatives. Honors continuity by
+ * boosting the lead-owner if `continuityOwnerId` is supplied (typically the
+ * owner of the lead this deal converted from).
+ */
+export function routeDeal(input: {
+  deal: DealLike;
+  members: StoredMember[];
+  assignments: StoredAssignment[];
+  departments: StoredDepartment[];
+  settings: StoredTeamSettings;
+  strategy?: AssignmentStrategy;
+  excludeMemberIds?: string[];
+  continuityOwnerId?: string | null;
+}): RoutingResult {
+  const strategy = input.strategy ?? input.settings.autoAssignmentStrategy ?? "ai";
+  const workloadCeiling = input.settings.workloadCeiling || 90;
+  const excluded = new Set(input.excludeMemberIds ?? []);
+  const candidatesPool = eligibleMembers(input.members).filter((m) => !excluded.has(m.id));
+
+  if (!candidatesPool.length) {
+    return {
+      strategy,
+      best: null,
+      alternatives: [],
+      rationale: "No eligible members available — every active member is at capacity, inactive, or excluded.",
+      consideredCount: 0,
+    };
+  }
+
+  const preferredDeptId = inferDepartmentForDeal(input.deal);
+
+  // Recency map — number of DEAL assignments per member in the last 7 days
+  const sevenDaysAgo = Date.now() - 7 * 86400000;
+  const recentByMember = new Map<string, number>();
+  for (const asg of input.assignments) {
+    if (asg.entityType !== "DEAL") continue;
+    if (new Date(asg.createdAt).getTime() < sevenDaysAgo) continue;
+    recentByMember.set(asg.assigneeId, (recentByMember.get(asg.assigneeId) || 0) + 1);
+  }
+
+  const scored: RoutingCandidate[] = candidatesPool.map((member) => {
+    const recent = recentByMember.get(member.id) || 0;
+
+    if (strategy === "workload") {
+      const headroom = Math.max(0, workloadCeiling - member.workloadPct);
+      return toCandidate({
+        member,
+        score: Math.round((headroom / workloadCeiling) * 100),
+        reason: `Highest workload headroom (${headroom}pp under ceiling).`,
+        signals: [{ label: `${headroom}pp headroom`, delta: headroom, tone: "positive" }],
+      });
+    }
+
+    if (strategy === "round_robin") {
+      const inverse = Math.max(0, 100 - recent * 15);
+      const deptBonus = preferredDeptId && member.departmentId === preferredDeptId ? 8 : 0;
+      const score = Math.min(100, inverse + deptBonus);
+      return toCandidate({
+        member,
+        score,
+        reason:
+          recent === 0
+            ? "Next in round-robin rotation."
+            : `${recent} deal${recent === 1 ? "" : "s"} this week — round-robin fairness.`,
+        signals: [
+          { label: `${recent} recent deals`, delta: -recent * 15, tone: recent === 0 ? "positive" : "neutral" },
+          ...(deptBonus ? [{ label: "Department match", delta: deptBonus, tone: "positive" as const }] : []),
+        ],
+      });
+    }
+
+    // strategy === "ai" — full multi-factor
+    const { score: baseScore, reason, signals } = buildDealSignals({
+      member,
+      deal: input.deal,
+      preferredDeptId,
+      workloadCeiling,
+      recentAssignmentsCount: recent,
+    });
+
+    // Continuity bonus — keeping the lead-owner on the converted deal is
+    // operationally cheap (context already in their head) and statistically
+    // converts better.
+    let score = baseScore;
+    let continuityReason = reason;
+    if (input.continuityOwnerId && member.id === input.continuityOwnerId) {
+      score = Math.min(100, score + 12);
+      signals.unshift({ label: "Lead-owner continuity", delta: 12, tone: "positive" });
+      continuityReason = `Lead-owner continuity + ${reason.replace(/^[A-Z]/, (c) => c.toLowerCase())}`;
+    }
+
+    return toCandidate({ member, score, reason: continuityReason, signals });
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const best = scored[0] ?? null;
+  const alternatives = scored.slice(1, 4);
+
+  let rationale: string;
+  if (!best) {
+    rationale = "No suitable owner found.";
+  } else if (strategy === "ai") {
+    const deptName = preferredDeptId
+      ? input.departments.find((d) => d.id === preferredDeptId)?.name ?? null
+      : null;
+    rationale = `Picked ${best.memberName.split(" ")[0]} (${best.score}/100) — ${best.reason}${
+      deptName ? ` Routed to ${deptName} for revenue execution.` : ""
+    }`;
+  } else if (strategy === "workload") {
+    rationale = `Picked ${best.memberName.split(" ")[0]} via workload-balancing — ${best.workloadPct}% current vs ${workloadCeiling}% ceiling.`;
+  } else {
+    rationale = `Picked ${best.memberName.split(" ")[0]} via round-robin fairness.`;
+  }
+
+  return {
+    strategy,
+    best,
+    alternatives,
+    rationale,
+    consideredCount: candidatesPool.length,
+  };
+}

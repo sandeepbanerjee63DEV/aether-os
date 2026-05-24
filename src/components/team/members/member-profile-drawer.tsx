@@ -86,6 +86,37 @@ interface MemberDetail {
       updatedAt: string;
     }>;
     performanceSignals: Array<{ label: string; value: string; tone: "good" | "warn" | "bad" | "neutral" }>;
+    deals: {
+      totalAssignedDeals: number;
+      activeDeals: number;
+      atRiskDeals: number;
+      stalledDeals: number;
+      wonDealsCount: number;
+      totalRevenueResponsibility: number;
+      weightedRevenueResponsibility: number;
+      avgDealVelocityDays: number | null;
+      dealWorkloadPct: number;
+      winRate: number;
+      pendingApprovals: number;
+      recentDeals: Array<{
+        id: string;
+        title: string;
+        company: string | null;
+        value: number;
+        stage: string;
+        probability: number;
+        aiProbability: number | null;
+        riskLevel: string | null;
+        operationalStatus: string;
+        assignmentType: string;
+        assignmentReason: string | null;
+        assignedAt: string | null;
+        expectedClose: string | null;
+        lastActivityAt: string | null;
+        supportingDepartmentIds: string[];
+        updatedAt: string;
+      }>;
+    };
   };
 }
 
@@ -93,7 +124,7 @@ export function MemberProfileDrawer() {
   const qc = useQueryClient();
   const router = useRouter();
   const { selectedMemberId, setSelectedMemberId } = useTeamStore();
-  const { setSelectedLeadId } = useUiStore();
+  const { setSelectedLeadId, setSelectedDealId } = useUiStore();
   const open = !!selectedMemberId;
 
   const { data, isLoading } = useQuery<MemberDetail>({
@@ -228,6 +259,11 @@ export function MemberProfileDrawer() {
                   setSelectedLeadId(leadId);
                   setSelectedMemberId(null);
                   router.push("/leads");
+                }}
+                onSelectDeal={(dealId) => {
+                  setSelectedDealId(dealId);
+                  setSelectedMemberId(null);
+                  router.push("/deals");
                 }}
               />
 

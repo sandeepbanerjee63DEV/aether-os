@@ -4,9 +4,9 @@ import { useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const CHANNEL_KEYS: Record<string, string[][]> = {
-  // The LEAD ↔ TEAM connection means any lead-side change can shift owner
-  // workload and assignment trails — fan out to the team views too so the
-  // member drawer / assignments tab stay live.
+  // LEAD ↔ TEAM + LEAD → DEAL — lead changes can shift owner workload, can
+  // be the source of a new deal (continuity routing), and update assignment
+  // trails. Fan out to deals + team views so they stay live.
   leads: [
     ["leads"],
     ["lead-detail"],
@@ -17,8 +17,23 @@ const CHANNEL_KEYS: Record<string, string[][]> = {
     ["team-member"],
     ["team-overview"],
     ["team-recommendations"],
+    ["deals"],
+    ["deal-detail"],
   ],
-  deals: [["deals"], ["deal-analytics"], ["deal-activity"]],
+  // DEAL ↔ TEAM — deal mutations move owner revenue responsibility,
+  // assignment trails, capacity and AI recommendations. Fan out.
+  deals: [
+    ["deals"],
+    ["deal-detail"],
+    ["deal-analytics"],
+    ["deal-activity"],
+    ["deal-owner-suggestions"],
+    ["team-assignments"],
+    ["team-assignment-history"],
+    ["team-member"],
+    ["team-overview"],
+    ["team-recommendations"],
+  ],
   team: [
     ["team-overview"],
     ["team-members"],
@@ -36,10 +51,13 @@ const CHANNEL_KEYS: Record<string, string[][]> = {
     ["team-permissions"],
     ["team-settings"],
     // Conversely, team changes (workload, status, departments) reshuffle
-    // the assignment engine's verdict — keep the leads list/detail in sync.
+    // the assignment engine's verdict — keep leads + deals in sync.
     ["leads"],
     ["lead-detail"],
     ["lead-owner-suggestions"],
+    ["deals"],
+    ["deal-detail"],
+    ["deal-owner-suggestions"],
   ],
 };
 

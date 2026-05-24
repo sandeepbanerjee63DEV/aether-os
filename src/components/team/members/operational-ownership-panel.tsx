@@ -11,8 +11,19 @@ import {
   Activity,
   TrendingUp,
   Clock,
+  Briefcase,
+  DollarSign,
+  Trophy,
+  Hourglass,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+function formatCurrency(value: number): string {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1000) return `$${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
+  return `$${Math.round(value)}`;
+}
 
 interface OwnedLeadSummary {
   id: string;
@@ -31,6 +42,40 @@ interface OwnedLeadSummary {
   updatedAt: string;
 }
 
+interface OwnedDealSummary {
+  id: string;
+  title: string;
+  company: string | null;
+  value: number;
+  stage: string;
+  probability: number;
+  aiProbability: number | null;
+  riskLevel: string | null;
+  operationalStatus: string;
+  assignmentType: string;
+  assignmentReason: string | null;
+  assignedAt: string | null;
+  expectedClose: string | null;
+  lastActivityAt: string | null;
+  supportingDepartmentIds: string[];
+  updatedAt: string;
+}
+
+interface DealOwnership {
+  totalAssignedDeals: number;
+  activeDeals: number;
+  atRiskDeals: number;
+  stalledDeals: number;
+  wonDealsCount: number;
+  totalRevenueResponsibility: number;
+  weightedRevenueResponsibility: number;
+  avgDealVelocityDays: number | null;
+  dealWorkloadPct: number;
+  winRate: number;
+  pendingApprovals: number;
+  recentDeals: OwnedDealSummary[];
+}
+
 interface OperationalOwnership {
   ownerId: string;
   totalAssignedLeads: number;
@@ -44,12 +89,14 @@ interface OperationalOwnership {
   expectedRevenueScore: number;
   recentLeads: OwnedLeadSummary[];
   performanceSignals: Array<{ label: string; value: string; tone: "good" | "warn" | "bad" | "neutral" }>;
+  deals: DealOwnership;
 }
 
 interface OperationalOwnershipPanelProps {
   data: OperationalOwnership;
   memberName: string;
   onSelectLead?: (leadId: string) => void;
+  onSelectDeal?: (dealId: string) => void;
 }
 
 const SIGNAL_TONE: Record<string, string> = {
@@ -65,7 +112,17 @@ const OP_STATUS_TONE: Record<string, string> = {
   ENGAGED: "bg-emerald-100 text-emerald-700",
   STALE: "bg-amber-100 text-amber-700",
   AT_RISK: "bg-rose-100 text-rose-700",
+  STALLED: "bg-amber-100 text-amber-700",
+  ACTIVE: "bg-emerald-100 text-emerald-700",
   CLOSED: "bg-slate-100 text-slate-500",
+};
+
+const STAGE_LABEL_SHORT: Record<string, string> = {
+  QUALIFICATION: "Qualify",
+  PROPOSAL: "Proposal",
+  NEGOTIATION: "Negotiate",
+  CLOSED_WON: "Won",
+  CLOSED_LOST: "Lost",
 };
 
 const ASSIGNMENT_TYPE_LABEL: Record<string, string> = {
@@ -87,20 +144,33 @@ function formatTimeSince(iso: string | null): string {
   return `${Math.max(1, Math.floor(diffMs / 60000))}m`;
 }
 
-export function OperationalOwnershipPanel({ data, memberName, onSelectLead }: OperationalOwnershipPanelProps) {
-  if (data.totalAssignedLeads === 0) {
+export function OperationalOwnershipPanel({
+  data,
+  memberName,
+  onSelectLead,
+  onSelectDeal,
+}: OperationalOwnershipPanelProps) {
+  if (data.totalAssignedLeads === 0 && data.deals.totalAssignedDeals === 0) {
     return (
       <section className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Operational Ownership</p>
         <p className="mt-1.5 text-sm text-slate-600">
-          {memberName.split(" ")[0]} doesn&apos;t own any leads yet.
+          {memberName.split(" ")[0]} doesn&apos;t own any leads or deals yet.
         </p>
-        <Link
-          href="/leads"
-          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-        >
-          Browse leads <ArrowUpRight className="h-3 w-3" />
-        </Link>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <Link
+            href="/leads"
+            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+          >
+            Browse leads <ArrowUpRight className="h-3 w-3" />
+          </Link>
+          <Link
+            href="/deals"
+            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+          >
+            Browse deals <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        </div>
       </section>
     );
   }
@@ -155,29 +225,31 @@ export function OperationalOwnershipPanel({ data, memberName, onSelectLead }: Op
         )}
       </div>
 
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {kpiCells.map((cell, i) => {
-          const Icon = cell.icon;
-          return (
-            <motion.div
-              key={cell.label}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
-              className={cn("rounded-2xl border border-slate-100 bg-gradient-to-br p-3", cell.bg)}
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                  {cell.label}
-                </p>
-                <Icon className={cn("h-3.5 w-3.5", cell.tone)} />
-              </div>
-              <p className={cn("mt-1 text-2xl font-bold tabular-nums", cell.tone)}>{cell.value}</p>
-              <p className="text-[10px] text-slate-500">{cell.sub}</p>
-            </motion.div>
-          );
-        })}
-      </div>
+      {data.totalAssignedLeads > 0 && (
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {kpiCells.map((cell, i) => {
+            const Icon = cell.icon;
+            return (
+              <motion.div
+                key={cell.label}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className={cn("rounded-2xl border border-slate-100 bg-gradient-to-br p-3", cell.bg)}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    {cell.label}
+                  </p>
+                  <Icon className={cn("h-3.5 w-3.5", cell.tone)} />
+                </div>
+                <p className={cn("mt-1 text-2xl font-bold tabular-nums", cell.tone)}>{cell.value}</p>
+                <p className="text-[10px] text-slate-500">{cell.sub}</p>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
 
       {data.performanceSignals.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -271,6 +343,191 @@ export function OperationalOwnershipPanel({ data, memberName, onSelectLead }: Op
           </Link>
         </div>
       )}
+
+      {/* ───────────────────── Deals ownership (DEAL ↔ TEAM) ───────────────────── */}
+      <div className="mt-5 border-t border-slate-100 pt-4">
+        <div className="flex items-center justify-between">
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <Briefcase className="h-3 w-3 text-emerald-600" />
+            Deals Ownership
+          </h3>
+          {data.deals.avgDealVelocityDays !== null && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-slate-500">
+              <Hourglass className="h-3 w-3" /> Avg velocity{" "}
+              <span className="font-semibold text-slate-700">{data.deals.avgDealVelocityDays}d</span>
+            </span>
+          )}
+        </div>
+
+        {data.deals.totalAssignedDeals === 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            No deals owned yet. New qualified leads will route here automatically.
+          </p>
+        ) : (
+          <>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl border border-slate-100 bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/30 p-3"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Active deals</p>
+                  <Briefcase className="h-3.5 w-3.5 text-emerald-700" />
+                </div>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700">{data.deals.activeDeals}</p>
+                <p className="text-[10px] text-slate-500">
+                  of {data.deals.totalAssignedDeals} owned
+                </p>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.04 }}
+                className="rounded-2xl border border-slate-100 bg-gradient-to-br from-indigo-50/80 via-white to-purple-50/30 p-3"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Revenue resp.</p>
+                  <DollarSign className="h-3.5 w-3.5 text-indigo-700" />
+                </div>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-indigo-700">
+                  {formatCurrency(data.deals.totalRevenueResponsibility)}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {formatCurrency(data.deals.weightedRevenueResponsibility)} weighted
+                </p>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08 }}
+                className={cn(
+                  "rounded-2xl border border-slate-100 bg-gradient-to-br p-3",
+                  data.deals.atRiskDeals + data.deals.stalledDeals > 0
+                    ? "from-rose-50/80 via-white to-pink-50/30"
+                    : "from-slate-50/80 via-white to-slate-100/30",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">At-risk</p>
+                  <AlertTriangle
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      data.deals.atRiskDeals + data.deals.stalledDeals > 0 ? "text-rose-700" : "text-slate-500",
+                    )}
+                  />
+                </div>
+                <p
+                  className={cn(
+                    "mt-1 text-2xl font-bold tabular-nums",
+                    data.deals.atRiskDeals + data.deals.stalledDeals > 0 ? "text-rose-700" : "text-slate-700",
+                  )}
+                >
+                  {data.deals.atRiskDeals + data.deals.stalledDeals}
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  {data.deals.stalledDeals} stalled
+                </p>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.12 }}
+                className="rounded-2xl border border-slate-100 bg-gradient-to-br from-amber-50/80 via-white to-orange-50/30 p-3"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</p>
+                  <Trophy className="h-3.5 w-3.5 text-amber-700" />
+                </div>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-amber-700">{data.deals.winRate}%</p>
+                <p className="text-[10px] text-slate-500">
+                  {data.deals.wonDealsCount} won
+                </p>
+              </motion.div>
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 ring-1 ring-slate-200">
+                <Gauge className="h-3 w-3" /> Capacity {data.deals.dealWorkloadPct}%
+              </span>
+              {data.deals.pendingApprovals > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 ring-1 ring-rose-100">
+                  <AlertTriangle className="h-3 w-3" /> {data.deals.pendingApprovals} approval{data.deals.pendingApprovals === 1 ? "" : "s"} pending
+                </span>
+              )}
+            </div>
+
+            {data.deals.recentDeals.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Recent deals</p>
+                <ul className="mt-2 space-y-1.5">
+                  {data.deals.recentDeals.map((deal) => {
+                    const prob = Math.round(deal.aiProbability ?? deal.probability);
+                    return (
+                      <li key={deal.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectDeal?.(deal.id)}
+                          className="group flex w-full items-start gap-2 rounded-xl border border-slate-100 bg-white p-2.5 text-left transition-all hover:border-emerald-100 hover:bg-emerald-50/30"
+                        >
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 text-[10px] font-bold text-emerald-700">
+                            <Briefcase className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-xs font-semibold text-slate-900">
+                                {deal.title}
+                              </p>
+                              <span className="shrink-0 text-xs font-bold tabular-nums text-slate-900">
+                                {formatCurrency(deal.value)}
+                              </span>
+                            </div>
+                            <p className="truncate text-[10px] text-slate-500">{deal.company || "—"}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              <span className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-700">
+                                {STAGE_LABEL_SHORT[deal.stage] ?? deal.stage}
+                              </span>
+                              <span
+                                className={cn(
+                                  "rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                  OP_STATUS_TONE[deal.operationalStatus] ?? OP_STATUS_TONE.NEW,
+                                )}
+                              >
+                                {deal.operationalStatus.replace("_", " ")}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600">
+                                {ASSIGNMENT_TYPE_LABEL[deal.assignmentType] ?? deal.assignmentType}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-[9px] font-bold tabular-nums",
+                                  prob >= 70 ? "text-emerald-600" : prob >= 45 ? "text-amber-600" : "text-slate-500",
+                                )}
+                              >
+                                {prob}%
+                              </span>
+                              <span className="ml-auto text-[9px] text-slate-400">
+                                {formatTimeSince(deal.lastActivityAt ?? deal.updatedAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Link
+                  href="/deals"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-700"
+                >
+                  View all {memberName.split(" ")[0]}&apos;s deals in Deals
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 }

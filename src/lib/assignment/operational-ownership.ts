@@ -1,16 +1,18 @@
 /**
  * AETHER OS — Operational Ownership aggregator.
  *
- * Computes the lead-related performance fingerprint of a team member.
+ * Computes the LEAD + DEAL performance fingerprint of a team member.
  * Consumed by:
  *   - /api/team/members/[id] (drawer profile)
  *   - /api/team/members (column on the directory)
- *   - Future leads.page → owner sidebar
+ *   - Leads page → owner sidebar
+ *   - Deals page → owner sidebar
  *
- * Pure function over the leadStore + teamStore snapshots. No I/O.
+ * Pure function over the leadStore + dealStore + teamStore snapshots. No I/O.
  */
 
 import type { StoredLead } from "@/lib/leads/lead-store";
+import type { StoredDeal } from "@/lib/deals/deal-store";
 import type { StoredAssignment, StoredMember } from "@/lib/team/team-store";
 
 export interface OwnedLeadSummary {
@@ -30,6 +32,40 @@ export interface OwnedLeadSummary {
   updatedAt: string;
 }
 
+export interface OwnedDealSummary {
+  id: string;
+  title: string;
+  company: string | null;
+  value: number;
+  stage: string;
+  probability: number;
+  aiProbability: number | null;
+  riskLevel: string | null;
+  operationalStatus: string;
+  assignmentType: string;
+  assignmentReason: string | null;
+  assignedAt: string | null;
+  expectedClose: string | null;
+  lastActivityAt: string | null;
+  supportingDepartmentIds: string[];
+  updatedAt: string;
+}
+
+export interface DealOwnership {
+  totalAssignedDeals: number;
+  activeDeals: number;
+  atRiskDeals: number;
+  stalledDeals: number;
+  wonDealsCount: number;
+  totalRevenueResponsibility: number;
+  weightedRevenueResponsibility: number;
+  avgDealVelocityDays: number | null;
+  dealWorkloadPct: number;
+  winRate: number;
+  pendingApprovals: number;
+  recentDeals: OwnedDealSummary[];
+}
+
 export interface OperationalOwnership {
   ownerId: string;
   totalAssignedLeads: number;
@@ -43,18 +79,112 @@ export interface OperationalOwnership {
   expectedRevenueScore: number;
   recentLeads: OwnedLeadSummary[];
   performanceSignals: Array<{ label: string; value: string; tone: "good" | "warn" | "bad" | "neutral" }>;
+  // Deal-side ownership (DEAL ↔ TEAM connection)
+  deals: DealOwnership;
 }
 
 const PENDING_STATUSES = new Set(["NEW", "AI_CLASSIFIED", "ASSIGNED", "FOLLOW_UP", "HOT", "WARM"]);
 const STALE_OP_STATUSES = new Set(["STALE", "AT_RISK"]);
 const VALUE_REVENUE: Record<string, number> = { High: 100, Medium: 50, Low: 20 };
+const DEAL_AT_RISK = new Set(["AT_RISK", "STALLED"]);
+const DEAL_OPEN_STAGES = new Set(["QUALIFICATION", "PROPOSAL", "NEGOTIATION"]);
+
+function computeDealOwnership(input: {
+  member: StoredMember;
+  deals: StoredDeal[];
+  assignments: StoredAssignment[];
+}): DealOwnership {
+  const { member, deals, assignments } = input;
+  const owned = deals.filter((d) => d.ownerId === member.id);
+  const activeDeals = owned.filter((d) => DEAL_OPEN_STAGES.has(d.stage));
+  const wonDeals = owned.filter((d) => d.stage === "CLOSED_WON");
+  const lostDeals = owned.filter((d) => d.stage === "CLOSED_LOST");
+  const atRiskDeals = owned.filter(
+    (d) => d.operationalStatus === "AT_RISK" && DEAL_OPEN_STAGES.has(d.stage),
+  );
+  const stalledDeals = owned.filter(
+    (d) => d.operationalStatus === "STALLED" && DEAL_OPEN_STAGES.has(d.stage),
+  );
+
+  const totalRevenueResponsibility = activeDeals.reduce((s, d) => s + d.value, 0);
+  const weightedRevenueResponsibility = activeDeals.reduce(
+    (s, d) => s + d.value * ((d.aiProbability ?? d.probability ?? 0) / 100),
+    0,
+  );
+
+  // Avg velocity — days between assignedAt and lastActivityAt for active deals
+  const velocities: number[] = [];
+  for (const d of activeDeals) {
+    if (d.assignedAt && d.lastActivityAt) {
+      const gap = (new Date(d.lastActivityAt).getTime() - new Date(d.assignedAt).getTime()) / 86400000;
+      if (gap >= 0 && gap < 365) velocities.push(gap);
+    }
+  }
+  const avgDealVelocityDays = velocities.length
+    ? Math.round((velocities.reduce((s, v) => s + v, 0) / velocities.length) * 10) / 10
+    : null;
+
+  const dealAssignments = assignments.filter(
+    (a) => a.assigneeId === member.id && a.entityType === "DEAL" && a.status === "ACTIVE",
+  );
+  const dealWorkloadPct = Math.round(dealAssignments.reduce((sum, a) => sum + a.workloadWeight, 0));
+
+  const closedTotal = wonDeals.length + lostDeals.length;
+  const winRate = closedTotal > 0 ? Math.round((wonDeals.length / closedTotal) * 100) : 0;
+
+  // Pending approvals — proxy: late-stage deals where ops decisions are pending.
+  // In a future Tasks module this would map to actual approval items; for now we
+  // treat NEGOTIATION-stage deals with AT_RISK status as awaiting an approval.
+  const pendingApprovals = owned.filter(
+    (d) => d.stage === "NEGOTIATION" && (d.operationalStatus === "AT_RISK" || d.riskLevel === "high"),
+  ).length;
+
+  const recentDeals: OwnedDealSummary[] = [...owned]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 5)
+    .map((d) => ({
+      id: d.id,
+      title: d.title,
+      company: d.company,
+      value: d.value,
+      stage: d.stage,
+      probability: d.probability,
+      aiProbability: d.aiProbability,
+      riskLevel: d.riskLevel,
+      operationalStatus: d.operationalStatus,
+      assignmentType: d.assignmentType,
+      assignmentReason: d.assignmentReason,
+      assignedAt: d.assignedAt,
+      expectedClose: d.expectedClose,
+      lastActivityAt: d.lastActivityAt,
+      supportingDepartmentIds: d.supportingDepartmentIds,
+      updatedAt: d.updatedAt,
+    }));
+
+  return {
+    totalAssignedDeals: owned.length,
+    activeDeals: activeDeals.length,
+    atRiskDeals: atRiskDeals.length,
+    stalledDeals: stalledDeals.length,
+    wonDealsCount: wonDeals.length,
+    totalRevenueResponsibility,
+    weightedRevenueResponsibility,
+    avgDealVelocityDays,
+    dealWorkloadPct,
+    winRate,
+    pendingApprovals,
+    recentDeals,
+  };
+}
 
 export function computeOperationalOwnership(input: {
   member: StoredMember;
   leads: StoredLead[];
   assignments: StoredAssignment[];
+  deals?: StoredDeal[];
 }): OperationalOwnership {
   const { member, leads, assignments } = input;
+  const deals = input.deals ?? [];
   const owned = leads.filter((l) => l.ownerId === member.id);
   const activeLeads = owned.filter((l) => l.status !== "WON" && l.status !== "LOST" && l.status !== "CLOSED");
   const pendingFollowUps = owned.filter((l) => PENDING_STATUSES.has(l.status));
@@ -117,6 +247,9 @@ export function computeOperationalOwnership(input: {
       updatedAt: l.updatedAt,
     }));
 
+  // Deal-side ownership (DEAL ↔ TEAM connection)
+  const dealOwnership = computeDealOwnership({ member, deals, assignments });
+
   const performanceSignals: OperationalOwnership["performanceSignals"] = [];
   if (avgResponseHours !== null) {
     performanceSignals.push({
@@ -146,6 +279,29 @@ export function computeOperationalOwnership(input: {
       tone: "good",
     });
   }
+  // Deal-derived signals
+  if (dealOwnership.activeDeals > 0) {
+    performanceSignals.push({
+      label: "Active deals",
+      value: `${dealOwnership.activeDeals}`,
+      tone: "neutral",
+    });
+  }
+  if (dealOwnership.atRiskDeals > 0 || dealOwnership.stalledDeals > 0) {
+    const total = dealOwnership.atRiskDeals + dealOwnership.stalledDeals;
+    performanceSignals.push({
+      label: "Deals at risk",
+      value: `${total}`,
+      tone: total >= 2 ? "bad" : "warn",
+    });
+  }
+  if (dealOwnership.winRate > 0) {
+    performanceSignals.push({
+      label: "Win rate",
+      value: `${dealOwnership.winRate}%`,
+      tone: dealOwnership.winRate >= 60 ? "good" : dealOwnership.winRate >= 40 ? "neutral" : "warn",
+    });
+  }
 
   return {
     ownerId: member.id,
@@ -160,5 +316,6 @@ export function computeOperationalOwnership(input: {
     expectedRevenueScore,
     recentLeads,
     performanceSignals,
+    deals: dealOwnership,
   };
 }

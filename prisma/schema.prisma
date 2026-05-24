@@ -183,7 +183,8 @@ model User {
   leads         Lead[]         @relation("LeadOwner")
   leadsAssignedByMe Lead[]     @relation("LeadAssignedBy")
   leadsFollowingUp Lead[]      @relation("LeadFollowUpOwner")
-  deals         Deal[]
+  deals         Deal[]         @relation("DealOwner")
+  dealsAssignedByMe Deal[]     @relation("DealAssignedBy")
   tasks         Task[]         @relation("TaskAssignee")
   activities    Activity[]
   notifications Notification[]
@@ -307,14 +308,46 @@ model Deal {
   expectedClose   DateTime?
   leadId          String?   @unique
   lead            Lead?     @relation(fields: [leadId], references: [id])
-  ownerId         String?
-  owner           User?     @relation(fields: [ownerId], references: [id])
+  // ---------- Assignment Engine connection (DEAL ↔ TEAM) ----------
+  ownerId                 String?
+  owner                   User?     @relation("DealOwner", fields: [ownerId], references: [id])
+  assignedById            String?
+  assignedBy              User?     @relation("DealAssignedBy", fields: [assignedById], references: [id])
+  assignmentType          DealAssignmentType @default(MANUAL)
+  assignmentReason        String?
+  assignedAt              DateTime?
+  departmentId            String?
+  department              Department? @relation("DealDepartment", fields: [departmentId], references: [id])
+  supportingDepartmentIds String[]  @default([])
+  operationalStatus       DealOperationalStatus @default(NEW)
+  lastActivityAt          DateTime?
+  // -----------------------------------------------------------------
   activities      DealActivity[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([stage])
   @@index([ownerId])
+  @@index([assignedById])
+  @@index([departmentId])
+  @@index([operationalStatus])
+}
+
+enum DealAssignmentType {
+  MANUAL
+  AI
+  ROUND_ROBIN
+  WORKLOAD
+  RULE
+  REASSIGNED
+}
+
+enum DealOperationalStatus {
+  NEW
+  ACTIVE
+  AT_RISK
+  STALLED
+  CLOSED
 }
 
 model DealActivity {
@@ -476,6 +509,7 @@ model Department {
   children     Department[] @relation("DepartmentHierarchy")
   members      User[]   @relation("DepartmentMembers")
   leadsRouted  Lead[]   @relation("LeadDepartment")
+  dealsRouted  Deal[]   @relation("DealDepartment")
   capacity     Int      @default(20)
   healthScore  Int      @default(85)
   isActive     Boolean  @default(true)

@@ -19,6 +19,9 @@ import { STAGE_ORDER, STAGE_LABEL, type DealStage } from "./stages";
 export { STAGE_ORDER, STAGE_LABEL };
 export type { DealStage };
 
+export type DealAssignmentType = "MANUAL" | "AI" | "ROUND_ROBIN" | "WORKLOAD" | "RULE" | "REASSIGNED";
+export type DealOperationalStatus = "NEW" | "ACTIVE" | "AT_RISK" | "STALLED" | "CLOSED";
+
 export interface StoredDeal {
   id: string;
   title: string;
@@ -35,6 +38,16 @@ export interface StoredDeal {
   leadId: string | null;
   ownerId: string | null;
   ownerName: string | null;
+  // ---------- Assignment Engine (DEAL ↔ TEAM) ----------
+  assignedById: string | null;
+  assignmentType: DealAssignmentType;
+  assignmentReason: string | null;
+  assignedAt: string | null;
+  departmentId: string | null;
+  supportingDepartmentIds: string[];
+  operationalStatus: DealOperationalStatus;
+  lastActivityAt: string | null;
+  // -----------------------------------------------------
   createdAt: string;
   updatedAt: string;
 }
@@ -66,8 +79,16 @@ const SEED_DEALS: Omit<StoredDeal, "createdAt" | "updatedAt">[] = [
     riskLevel: "low",
     expectedClose: new Date(Date.now() + 9 * 86400000).toISOString(),
     leadId: "lead-1",
-    ownerId: null,
+    ownerId: "mem-raj",
     ownerName: "Raj Mehta",
+    assignedById: "mem-arjun",
+    assignmentType: "AI",
+    assignmentReason: "Owner continuity with linked lead — Raj already owns the TechCorp account.",
+    assignedAt: new Date(Date.now() - 8 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    supportingDepartmentIds: ["dept-ops", "dept-finance"],
+    operationalStatus: "ACTIVE",
+    lastActivityAt: new Date(Date.now() - 0.5 * 86400000).toISOString(),
   },
   {
     id: "deal-2",
@@ -84,8 +105,16 @@ const SEED_DEALS: Omit<StoredDeal, "createdAt" | "updatedAt">[] = [
     riskLevel: "medium",
     expectedClose: new Date(Date.now() + 18 * 86400000).toISOString(),
     leadId: "lead-2",
-    ownerId: null,
-    ownerName: "Aisha Khan",
+    ownerId: "mem-karan",
+    ownerName: "Karan Singh",
+    assignedById: "mem-raj",
+    assignmentType: "MANUAL",
+    assignmentReason: "Karan owns the referral funnel — keeps continuity with lead routing.",
+    assignedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    supportingDepartmentIds: ["dept-ops"],
+    operationalStatus: "ACTIVE",
+    lastActivityAt: new Date(Date.now() - 1.5 * 86400000).toISOString(),
   },
   {
     id: "deal-3",
@@ -102,8 +131,16 @@ const SEED_DEALS: Omit<StoredDeal, "createdAt" | "updatedAt">[] = [
     riskLevel: "medium",
     expectedClose: new Date(Date.now() + 35 * 86400000).toISOString(),
     leadId: "lead-3",
-    ownerId: null,
-    ownerName: "Karan Singh",
+    ownerId: "mem-sneha",
+    ownerName: "Sneha Kapoor",
+    assignedById: null,
+    assignmentType: "AI",
+    assignmentReason: "Workload headroom + integration-heavy deal aligns with Ops department coverage.",
+    assignedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    supportingDepartmentIds: ["dept-ops"],
+    operationalStatus: "NEW",
+    lastActivityAt: new Date(Date.now() - 2 * 86400000).toISOString(),
   },
   {
     id: "deal-4",
@@ -120,8 +157,16 @@ const SEED_DEALS: Omit<StoredDeal, "createdAt" | "updatedAt">[] = [
     riskLevel: "low",
     expectedClose: new Date(Date.now() + 7 * 86400000).toISOString(),
     leadId: "lead-4",
-    ownerId: null,
+    ownerId: "mem-raj",
     ownerName: "Raj Mehta",
+    assignedById: "mem-arjun",
+    assignmentType: "AI",
+    assignmentReason: "Senior coverage for high-value enterprise deal; legal + finance in supporting cast.",
+    assignedAt: new Date(Date.now() - 11 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    supportingDepartmentIds: ["dept-finance", "dept-ops"],
+    operationalStatus: "ACTIVE",
+    lastActivityAt: new Date(Date.now() - 1 * 86400000).toISOString(),
   },
   {
     id: "deal-5",
@@ -138,8 +183,16 @@ const SEED_DEALS: Omit<StoredDeal, "createdAt" | "updatedAt">[] = [
     riskLevel: "medium",
     expectedClose: new Date(Date.now() + 21 * 86400000).toISOString(),
     leadId: "lead-5",
-    ownerId: null,
-    ownerName: "Aisha Khan",
+    ownerId: "mem-tanvi",
+    ownerName: "Tanvi Desai",
+    assignedById: null,
+    assignmentType: "ROUND_ROBIN",
+    assignmentReason: "Round-robin rotation — Tanvi up next.",
+    assignedAt: new Date(Date.now() - 9 * 86400000).toISOString(),
+    departmentId: "dept-ops",
+    supportingDepartmentIds: ["dept-sales"],
+    operationalStatus: "AT_RISK",
+    lastActivityAt: new Date(Date.now() - 6 * 86400000).toISOString(),
   },
   {
     id: "deal-6",
@@ -156,8 +209,16 @@ const SEED_DEALS: Omit<StoredDeal, "createdAt" | "updatedAt">[] = [
     riskLevel: "low",
     expectedClose: new Date(Date.now() - 5 * 86400000).toISOString(),
     leadId: null,
-    ownerId: null,
+    ownerId: "mem-karan",
     ownerName: "Karan Singh",
+    assignedById: "mem-raj",
+    assignmentType: "MANUAL",
+    assignmentReason: "Karan led the close — keeps account ownership through rollout.",
+    assignedAt: new Date(Date.now() - 45 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    supportingDepartmentIds: ["dept-ops", "dept-finance", "dept-support"],
+    operationalStatus: "CLOSED",
+    lastActivityAt: new Date(Date.now() - 4 * 86400000).toISOString(),
   },
 ];
 
@@ -243,13 +304,54 @@ async function safeWriteJson(file: string, data: unknown): Promise<void> {
   }
 }
 
+let loadingPromise: Promise<void> | null = null;
+
 async function ensureLoaded(): Promise<void> {
   if (cache.loaded) return;
-  cache.loaded = true;
+  if (loadingPromise) {
+    await loadingPromise;
+    return;
+  }
+  loadingPromise = doLoad().finally(() => {
+    loadingPromise = null;
+  });
+  await loadingPromise;
+}
 
-  const dealsFromDisk = await safeReadJson<StoredDeal[]>(DEALS_FILE);
+async function doLoad(): Promise<void> {
+  if (cache.loaded) return;
+
+  const dealsFromDisk = await safeReadJson<Partial<StoredDeal>[]>(DEALS_FILE);
   if (dealsFromDisk?.length) {
-    cache.deals = dealsFromDisk;
+    // Backfill assignment fields on legacy disk records so older .data/deals.json
+    // dumps work seamlessly after the DEAL ↔ TEAM integration.
+    cache.deals = dealsFromDisk.map((d) => ({
+      id: d.id ?? newId("deal"),
+      title: d.title ?? "",
+      company: d.company ?? null,
+      contactName: d.contactName ?? null,
+      value: d.value ?? 0,
+      stage: (d.stage as DealStage) ?? "QUALIFICATION",
+      probability: d.probability ?? 0,
+      aiProbability: d.aiProbability ?? null,
+      aiAnalysis: d.aiAnalysis ?? null,
+      nextBestAction: d.nextBestAction ?? null,
+      riskLevel: d.riskLevel ?? null,
+      expectedClose: d.expectedClose ?? null,
+      leadId: d.leadId ?? null,
+      ownerId: d.ownerId ?? null,
+      ownerName: d.ownerName ?? null,
+      assignedById: d.assignedById ?? null,
+      assignmentType: d.assignmentType ?? "MANUAL",
+      assignmentReason: d.assignmentReason ?? null,
+      assignedAt: d.assignedAt ?? null,
+      departmentId: d.departmentId ?? null,
+      supportingDepartmentIds: d.supportingDepartmentIds ?? [],
+      operationalStatus: d.operationalStatus ?? "NEW",
+      lastActivityAt: d.lastActivityAt ?? null,
+      createdAt: d.createdAt ?? new Date().toISOString(),
+      updatedAt: d.updatedAt ?? new Date().toISOString(),
+    }));
   } else {
     const now = new Date().toISOString();
     cache.deals = SEED_DEALS.map((d) => ({ ...d, createdAt: now, updatedAt: now }));
@@ -263,6 +365,8 @@ async function ensureLoaded(): Promise<void> {
     cache.activity = SEED_ACTIVITY.map((a, i) => ({ ...a, id: `da_seed_${i}` }));
     await safeWriteJson(ACTIVITY_FILE, cache.activity);
   }
+
+  cache.loaded = true;
 }
 
 function newId(prefix: string): string {
@@ -297,12 +401,46 @@ export const dealStore = {
   },
 
   async create(
-    input: Omit<StoredDeal, "id" | "createdAt" | "updatedAt">
+    input: Omit<
+      StoredDeal,
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "assignedById"
+      | "assignmentType"
+      | "assignmentReason"
+      | "assignedAt"
+      | "departmentId"
+      | "supportingDepartmentIds"
+      | "operationalStatus"
+      | "lastActivityAt"
+    > &
+      Partial<
+        Pick<
+          StoredDeal,
+          | "assignedById"
+          | "assignmentType"
+          | "assignmentReason"
+          | "assignedAt"
+          | "departmentId"
+          | "supportingDepartmentIds"
+          | "operationalStatus"
+          | "lastActivityAt"
+        >
+      >,
   ): Promise<StoredDeal> {
     await ensureLoaded();
     const now = new Date().toISOString();
     const deal: StoredDeal = {
       ...input,
+      assignedById: input.assignedById ?? null,
+      assignmentType: input.assignmentType ?? "MANUAL",
+      assignmentReason: input.assignmentReason ?? null,
+      assignedAt: input.assignedAt ?? null,
+      departmentId: input.departmentId ?? null,
+      supportingDepartmentIds: input.supportingDepartmentIds ?? [],
+      operationalStatus: input.operationalStatus ?? "NEW",
+      lastActivityAt: input.lastActivityAt ?? null,
       id: newId("deal"),
       createdAt: now,
       updatedAt: now,
@@ -321,6 +459,26 @@ export const dealStore = {
     await safeWriteJson(DEALS_FILE, cache.deals);
     await safeWriteJson(ACTIVITY_FILE, cache.activity);
     return deal;
+  },
+
+  async addActivity(
+    dealId: string,
+    event: { type?: string; title: string; description?: string | null; icon?: string; color?: string }
+  ): Promise<StoredDealActivity> {
+    await ensureLoaded();
+    const created: StoredDealActivity = {
+      id: newId("da"),
+      dealId,
+      type: event.type || "note",
+      title: event.title,
+      description: event.description ?? null,
+      icon: event.icon || "circle",
+      color: event.color || "purple",
+      createdAt: new Date().toISOString(),
+    };
+    cache.activity.push(created);
+    await safeWriteJson(ACTIVITY_FILE, cache.activity);
+    return created;
   },
 
   async update(id: string, patch: Partial<StoredDeal>): Promise<StoredDeal | null> {

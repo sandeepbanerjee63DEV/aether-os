@@ -24,14 +24,25 @@ import {
   Trophy,
   XCircle,
   Plus,
+  UserCog,
+  ArrowRightLeft,
+  Wand2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn, getInitials } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
 import { STAGE_ORDER, STAGE_LABEL, type DealStage } from "@/lib/deals/stages";
+
+interface BoardOwner {
+  id: string;
+  name: string;
+  avatar: string | null;
+  role: string;
+}
 
 interface BoardDeal {
   id: string;
@@ -45,7 +56,27 @@ interface BoardDeal {
   riskLevel: string | null;
   expectedClose: string | null;
   ownerName: string | null;
+  owner?: BoardOwner | null;
+  assignmentType?: string;
+  operationalStatus?: string;
 }
+
+const ASSIGN_TYPE_ICON: Record<string, { icon: typeof Sparkles; tone: string; title: string }> = {
+  AI: { icon: Sparkles, tone: "bg-gradient-to-br from-indigo-500 to-purple-500", title: "AI-routed" },
+  MANUAL: { icon: UserCog, tone: "bg-gradient-to-br from-slate-700 to-slate-900", title: "Manually assigned" },
+  ROUND_ROBIN: { icon: ArrowRightLeft, tone: "bg-gradient-to-br from-amber-500 to-orange-500", title: "Round-robin" },
+  WORKLOAD: { icon: Wand2, tone: "bg-gradient-to-br from-emerald-500 to-teal-500", title: "Workload-balanced" },
+  RULE: { icon: Wand2, tone: "bg-gradient-to-br from-blue-500 to-cyan-500", title: "Rule-based" },
+  REASSIGNED: { icon: ArrowRightLeft, tone: "bg-gradient-to-br from-rose-500 to-pink-500", title: "Reassigned" },
+};
+
+const OP_STATUS_DOT: Record<string, string> = {
+  AT_RISK: "bg-rose-500",
+  STALLED: "bg-amber-500",
+  ACTIVE: "bg-emerald-500",
+  NEW: "bg-slate-400",
+  CLOSED: "bg-slate-300",
+};
 
 const STAGE_THEME: Record<
   DealStage,
@@ -190,6 +221,45 @@ function DealCard({ deal, isDragging }: { deal: BoardDeal; isDragging?: boolean 
           {formatExpectedClose(deal.expectedClose)}
         </span>
       </div>
+
+      {(deal.owner || deal.ownerName) && (
+        <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2">
+          <div className="flex items-center gap-1.5">
+            <div className="relative">
+              <Avatar className="h-5 w-5 ring-1 ring-white">
+                <AvatarImage src={deal.owner?.avatar || undefined} />
+                <AvatarFallback className="bg-indigo-50 text-[8px] font-bold text-indigo-700">
+                  {getInitials(deal.owner?.name ?? deal.ownerName ?? "?")}
+                </AvatarFallback>
+              </Avatar>
+              {deal.assignmentType && ASSIGN_TYPE_ICON[deal.assignmentType] && (() => {
+                const meta = ASSIGN_TYPE_ICON[deal.assignmentType];
+                const Icon = meta.icon;
+                return (
+                  <span
+                    title={meta.title}
+                    className={cn(
+                      "absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full text-white shadow",
+                      meta.tone,
+                    )}
+                  >
+                    <Icon className="h-1.5 w-1.5" />
+                  </span>
+                );
+              })()}
+            </div>
+            <span className="truncate text-[10px] font-medium text-slate-600">
+              {deal.owner?.name?.split(" ")[0] ?? deal.ownerName?.split(" ")[0] ?? "Unassigned"}
+            </span>
+          </div>
+          {deal.operationalStatus && OP_STATUS_DOT[deal.operationalStatus] && (
+            <span
+              title={`Status: ${deal.operationalStatus.replace("_", " ")}`}
+              className={cn("h-1.5 w-1.5 shrink-0 rounded-full", OP_STATUS_DOT[deal.operationalStatus])}
+            />
+          )}
+        </div>
+      )}
     </motion.div>
   );
 }

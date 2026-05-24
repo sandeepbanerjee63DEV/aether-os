@@ -3,6 +3,7 @@ import { teamStore, type StoredMember } from "@/lib/team/team-store";
 import { recordAudit, diff } from "@/lib/team/audit";
 import { getSession } from "@/lib/auth/jwt";
 import { leadStore } from "@/lib/leads/lead-store";
+import { dealStore } from "@/lib/deals/deal-store";
 import { computeOperationalOwnership } from "@/lib/assignment/operational-ownership";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,13 +19,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const accessLogs = await teamStore.listAccessLogs({ userId: id, limit: 10 });
   const { assignments } = await teamStore.listAssignments({ assigneeId: id, limit: 50 });
 
-  // Operational Ownership — bridges TEAM ↔ LEADS modules. Shows the member's
-  // pipeline performance, follow-up backlog, and conversion fingerprint.
+  // Operational Ownership — bridges TEAM ↔ LEADS + TEAM ↔ DEALS modules. Shows
+  // the member's pipeline performance, follow-up backlog, conversion fingerprint,
+  // active deals, revenue responsibility, and deal velocity.
   const { leads } = await leadStore.list({});
+  const { deals } = await dealStore.list({});
   const operationalOwnership = computeOperationalOwnership({
     member,
     leads,
     assignments,
+    deals,
   });
 
   return NextResponse.json({

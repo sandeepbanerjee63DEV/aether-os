@@ -22,6 +22,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getInitials, cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
 import { STAGE_LABEL, type DealStage } from "@/lib/deals/stages";
+import { DealOwnerCard } from "./deal-owner-card";
+
+interface OwnerSummary {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  role: string;
+  title: string | null;
+  workloadPct: number;
+  operationalScore: number;
+  departmentId?: string | null;
+}
 
 interface DealDetail {
   id: string;
@@ -38,6 +51,14 @@ interface DealDetail {
   expectedClose: string | null;
   ownerName: string | null;
   updatedAt: string;
+  owner?: OwnerSummary | null;
+  assignedBy?: OwnerSummary | null;
+  department?: { id: string; name: string; color: string; icon: string } | null;
+  supportingDepartments?: { id: string; name: string; color: string; icon: string }[];
+  assignmentType?: string;
+  assignmentReason?: string | null;
+  assignedAt?: string | null;
+  operationalStatus?: string;
 }
 
 function formatCurrency(value: number): string {
@@ -191,13 +212,27 @@ export function DealDetailsPanel() {
           </div>
           <div className="rounded-xl bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-              Owner
+              Expected close
             </p>
             <p className="truncate text-sm font-semibold text-slate-800">
-              {deal.ownerName || "Unassigned"}
+              {formatExpectedClose(deal.expectedClose)}
             </p>
           </div>
         </div>
+
+        <DealOwnerCard
+          dealId={deal.id}
+          owner={deal.owner ?? null}
+          assignedBy={deal.assignedBy ?? null}
+          department={deal.department ?? null}
+          supportingDepartments={deal.supportingDepartments ?? []}
+          assignmentType={deal.assignmentType ?? "MANUAL"}
+          assignmentReason={deal.assignmentReason ?? null}
+          assignedAt={deal.assignedAt ?? null}
+          operationalStatus={deal.operationalStatus ?? "NEW"}
+          dealValue={deal.value}
+          aiProbability={deal.aiProbability}
+        />
 
         <div className="space-y-3 rounded-xl border border-indigo-100/80 bg-gradient-to-br from-indigo-50/30 via-white to-purple-50/20 p-4 ai-glow">
           <div className="flex items-center justify-between">
