@@ -27,6 +27,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn, getInitials } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
 import { AiReasoningLayer } from "@/components/intelligence/ai-reasoning-layer";
+import { LeadOwnerCard } from "./lead-owner-card";
+
+interface OwnerSummary {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  role: string;
+  title: string | null;
+  workloadPct: number;
+  operationalScore: number;
+  departmentId?: string | null;
+}
 
 interface LeadDetail {
   id: string;
@@ -45,6 +58,15 @@ interface LeadDetail {
   nextBestAction?: string | null;
   convertProbability: number;
   aiClassification?: string | null;
+  ownerId?: string | null;
+  owner?: OwnerSummary | null;
+  followUpOwner?: OwnerSummary | null;
+  assignedBy?: OwnerSummary | null;
+  assignmentType?: string;
+  assignmentReason?: string | null;
+  assignedAt?: string | null;
+  operationalStatus?: string;
+  department?: { id: string; name: string; color: string; icon: string } | null;
 }
 
 type ActionType = "EMAIL" | "CALL" | "DEMO" | "NURTURE" | "DONE" | "REGENERATE";
@@ -280,6 +302,18 @@ export function LeadDetailsPanel() {
             </div>
           ))}
         </div>
+
+        <LeadOwnerCard
+          leadId={lead.id}
+          owner={lead.owner ?? null}
+          followUpOwner={lead.followUpOwner ?? null}
+          assignedBy={lead.assignedBy ?? null}
+          department={lead.department ?? null}
+          assignmentType={lead.assignmentType ?? "MANUAL"}
+          assignmentReason={lead.assignmentReason ?? null}
+          assignedAt={lead.assignedAt ?? null}
+          operationalStatus={lead.operationalStatus ?? "NEW"}
+        />
 
         <AiReasoningLayer
           aiScore={lead.aiScore}

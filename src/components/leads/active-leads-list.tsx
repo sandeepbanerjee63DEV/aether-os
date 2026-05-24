@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -31,6 +31,7 @@ import {
   type LeadSort,
   type LeadStatusFilter,
 } from "@/stores/ui-store";
+import { Sparkles, UserCog } from "lucide-react";
 
 interface LeadRow {
   id: string;
@@ -42,6 +43,10 @@ interface LeadRow {
   aiScore: number;
   convertProbability?: number;
   updatedAt: string;
+  ownerId?: string | null;
+  owner?: { id: string; name: string; avatar: string | null; role: string } | null;
+  assignmentType?: string;
+  operationalStatus?: string;
 }
 
 const STATUS_VARIANT: Record<
@@ -462,6 +467,36 @@ export function ActiveLeadsList() {
                       </p>
                       <p className="truncate text-xs text-slate-500">{lead.company}</p>
                     </div>
+                    {lead.owner ? (
+                      <div
+                        className="relative flex shrink-0 items-center"
+                        title={`Owned by ${lead.owner.name}${lead.assignmentType ? ` · ${lead.assignmentType === "AI" ? "AI Engine" : lead.assignmentType === "REASSIGNED" ? "Reassigned" : lead.assignmentType.replace(/_/g, " ")}` : ""}`}
+                      >
+                        <Avatar className="h-6 w-6 ring-2 ring-white">
+                          <AvatarImage src={lead.owner.avatar || undefined} />
+                          <AvatarFallback className="text-[9px]">
+                            {getInitials(lead.owner.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {lead.assignmentType === "AI" && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 ring-1 ring-white">
+                            <Sparkles className="h-1.5 w-1.5 text-white" />
+                          </span>
+                        )}
+                        {lead.assignmentType === "MANUAL" && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-slate-700 ring-1 ring-white">
+                            <UserCog className="h-1.5 w-1.5 text-white" />
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span
+                        className="shrink-0 text-[9px] font-semibold uppercase tracking-wider text-amber-600"
+                        title="Unassigned"
+                      >
+                        unassigned
+                      </span>
+                    )}
                     <Badge
                       variant={STATUS_VARIANT[lead.status] || "default"}
                       className="shrink-0 text-[10px]"

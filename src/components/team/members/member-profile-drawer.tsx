@@ -15,7 +15,10 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { StatusBadge } from "../shared/status-badge";
 import { WorkloadIndicator } from "../shared/workload-indicator";
+import { OperationalOwnershipPanel } from "./operational-ownership-panel";
 import { useTeamStore } from "@/stores/team-store";
+import { useRouter } from "next/navigation";
+import { useUiStore } from "@/stores/ui-store";
 import {
   Mail,
   Phone,
@@ -55,11 +58,42 @@ interface MemberDetail {
   devices: { id: string; name: string; type: string; trusted: boolean; lastSeenAt: string }[];
   accessLogs: { id: string; eventType: string; success: boolean; location: string | null; createdAt: string }[];
   assignments: { id: string; entityType: string; entityLabel: string; status: string; priority: number; updatedAt: string }[];
+  operationalOwnership: {
+    ownerId: string;
+    totalAssignedLeads: number;
+    activeLeads: number;
+    pendingFollowUps: number;
+    staleLeads: number;
+    hotLeads: number;
+    leadWorkloadPct: number;
+    avgResponseHours: number | null;
+    conversionRate: number;
+    expectedRevenueScore: number;
+    recentLeads: Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      company: string;
+      value: string;
+      aiScore: number;
+      convertProbability: number;
+      status: string;
+      operationalStatus: string;
+      assignmentType: string;
+      assignmentReason: string | null;
+      assignedAt: string | null;
+      lastContactedAt: string | null;
+      updatedAt: string;
+    }>;
+    performanceSignals: Array<{ label: string; value: string; tone: "good" | "warn" | "bad" | "neutral" }>;
+  };
 }
 
 export function MemberProfileDrawer() {
   const qc = useQueryClient();
+  const router = useRouter();
   const { selectedMemberId, setSelectedMemberId } = useTeamStore();
+  const { setSelectedLeadId } = useUiStore();
   const open = !!selectedMemberId;
 
   const { data, isLoading } = useQuery<MemberDetail>({
@@ -185,6 +219,17 @@ export function MemberProfileDrawer() {
                   </div>
                 </div>
               </section>
+
+              {/* Operational Ownership — LEADS ↔ TEAM connection */}
+              <OperationalOwnershipPanel
+                data={data.operationalOwnership}
+                memberName={data.member.name}
+                onSelectLead={(leadId) => {
+                  setSelectedLeadId(leadId);
+                  setSelectedMemberId(null);
+                  router.push("/leads");
+                }}
+              />
 
               {/* Contact */}
               <section>

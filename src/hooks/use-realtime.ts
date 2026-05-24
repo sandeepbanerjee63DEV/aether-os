@@ -4,7 +4,20 @@ import { useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const CHANNEL_KEYS: Record<string, string[][]> = {
-  leads: [["leads"], ["lead-detail"], ["timeline"]],
+  // The LEAD ↔ TEAM connection means any lead-side change can shift owner
+  // workload and assignment trails — fan out to the team views too so the
+  // member drawer / assignments tab stay live.
+  leads: [
+    ["leads"],
+    ["lead-detail"],
+    ["lead-owner-suggestions"],
+    ["timeline"],
+    ["team-assignments"],
+    ["team-assignment-history"],
+    ["team-member"],
+    ["team-overview"],
+    ["team-recommendations"],
+  ],
   deals: [["deals"], ["deal-analytics"], ["deal-activity"]],
   team: [
     ["team-overview"],
@@ -22,6 +35,11 @@ const CHANNEL_KEYS: Record<string, string[][]> = {
     ["team-roles"],
     ["team-permissions"],
     ["team-settings"],
+    // Conversely, team changes (workload, status, departments) reshuffle
+    // the assignment engine's verdict — keep the leads list/detail in sync.
+    ["leads"],
+    ["lead-detail"],
+    ["lead-owner-suggestions"],
   ],
 };
 

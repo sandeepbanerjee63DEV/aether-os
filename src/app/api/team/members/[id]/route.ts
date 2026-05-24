@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { teamStore, type StoredMember } from "@/lib/team/team-store";
 import { recordAudit, diff } from "@/lib/team/audit";
 import { getSession } from "@/lib/auth/jwt";
+import { leadStore } from "@/lib/leads/lead-store";
+import { computeOperationalOwnership } from "@/lib/assignment/operational-ownership";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,7 +16,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const sessions = await teamStore.listSessions({ userId: id });
   const devices = await teamStore.listDevices(id);
   const accessLogs = await teamStore.listAccessLogs({ userId: id, limit: 10 });
-  const { assignments } = await teamStore.listAssignments({ assigneeId: id, limit: 20 });
+  const { assignments } = await teamStore.listAssignments({ assigneeId: id, limit: 50 });
+
+  // Operational Ownership — bridges TEAM ↔ LEADS modules. Shows the member's
+  // pipeline performance, follow-up backlog, and conversion fingerprint.
+  const { leads } = await leadStore.list({});
+  const operationalOwnership = computeOperationalOwnership({
+    member,
+    leads,
+    assignments,
+  });
 
   return NextResponse.json({
     member,
@@ -23,6 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     devices,
     accessLogs,
     assignments,
+    operationalOwnership,
   });
 }
 

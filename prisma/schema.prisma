@@ -181,6 +181,8 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   leads         Lead[]         @relation("LeadOwner")
+  leadsAssignedByMe Lead[]     @relation("LeadAssignedBy")
+  leadsFollowingUp Lead[]      @relation("LeadFollowUpOwner")
   deals         Deal[]
   tasks         Task[]         @relation("TaskAssignee")
   activities    Activity[]
@@ -241,19 +243,53 @@ model Lead {
   nextBestAction  String?
   convertProbability Float      @default(0)
   tags            String[]
-  ownerId         String?
-  owner           User?        @relation("LeadOwner", fields: [ownerId], references: [id])
-  notes           Note[]
-  activities      Activity[]
-  timeline        TimelineEvent[]
-  attachments     Attachment[]
-  deal            Deal?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  // ---------- Assignment Engine connection (LEAD ↔ TEAM) ----------
+  ownerId            String?
+  owner              User?     @relation("LeadOwner", fields: [ownerId], references: [id])
+  assignedById       String?
+  assignedBy         User?     @relation("LeadAssignedBy", fields: [assignedById], references: [id])
+  assignmentType     LeadAssignmentType @default(MANUAL)
+  assignmentReason   String?
+  assignedAt         DateTime?
+  departmentId       String?
+  department         Department? @relation("LeadDepartment", fields: [departmentId], references: [id])
+  followUpOwnerId    String?
+  followUpOwner      User?     @relation("LeadFollowUpOwner", fields: [followUpOwnerId], references: [id])
+  operationalStatus  LeadOperationalStatus @default(NEW)
+  lastContactedAt    DateTime?
+  // ----------------------------------------------------------------
+  notes              Note[]
+  activities         Activity[]
+  timeline           TimelineEvent[]
+  attachments        Attachment[]
+  deal               Deal?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([status])
   @@index([aiScore])
   @@index([ownerId])
+  @@index([assignedById])
+  @@index([departmentId])
+  @@index([operationalStatus])
+}
+
+enum LeadAssignmentType {
+  MANUAL
+  AI
+  ROUND_ROBIN
+  WORKLOAD
+  RULE
+  REASSIGNED
+}
+
+enum LeadOperationalStatus {
+  NEW
+  CONTACTED
+  ENGAGED
+  STALE
+  AT_RISK
+  CLOSED
 }
 
 model Deal {
@@ -439,6 +475,7 @@ model Department {
   parent       Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id])
   children     Department[] @relation("DepartmentHierarchy")
   members      User[]   @relation("DepartmentMembers")
+  leadsRouted  Lead[]   @relation("LeadDepartment")
   capacity     Int      @default(20)
   healthScore  Int      @default(85)
   isActive     Boolean  @default(true)

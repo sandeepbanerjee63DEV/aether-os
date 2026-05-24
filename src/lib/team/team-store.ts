@@ -689,9 +689,25 @@ function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Use a single in-flight promise so concurrent callers all await the same load
+// instead of racing each other into an empty cache (which caused enrichment
+// misses on the lead routing flow).
+let loadingPromise: Promise<void> | null = null;
+
 async function ensureLoaded(): Promise<void> {
   if (cache.loaded) return;
-  cache.loaded = true;
+  if (loadingPromise) {
+    await loadingPromise;
+    return;
+  }
+  loadingPromise = doLoad().finally(() => {
+    loadingPromise = null;
+  });
+  await loadingPromise;
+}
+
+async function doLoad(): Promise<void> {
+  if (cache.loaded) return;
   const now = NOW();
 
   const departments = await safeReadJson<StoredDepartment[]>(FILES.departments);
@@ -758,6 +774,8 @@ async function ensureLoaded(): Promise<void> {
   const settings = await safeReadJson<StoredTeamSettings>(FILES.settings);
   cache.settings = settings ?? DEFAULT_SETTINGS;
   if (!settings) await safeWriteJson(FILES.settings, cache.settings);
+
+  cache.loaded = true;
 }
 
 // ---------------- Public API ----------------

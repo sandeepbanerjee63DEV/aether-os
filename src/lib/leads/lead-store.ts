@@ -13,6 +13,9 @@ import path from "path";
  * Swap with Prisma in production by setting DATABASE_URL.
  */
 
+export type LeadAssignmentType = "MANUAL" | "AI" | "ROUND_ROBIN" | "WORKLOAD" | "RULE" | "REASSIGNED";
+export type LeadOperationalStatus = "NEW" | "CONTACTED" | "ENGAGED" | "STALE" | "AT_RISK" | "CLOSED";
+
 export interface StoredLead {
   id: string;
   firstName: string;
@@ -33,6 +36,17 @@ export interface StoredLead {
   nextBestAction: string | null;
   convertProbability: number;
   tags: string[];
+  // ---------- Assignment Engine (LEAD ↔ TEAM) ----------
+  ownerId: string | null;
+  assignedById: string | null;
+  assignmentType: LeadAssignmentType;
+  assignmentReason: string | null;
+  assignedAt: string | null;
+  departmentId: string | null;
+  followUpOwnerId: string | null;
+  operationalStatus: LeadOperationalStatus;
+  lastContactedAt: string | null;
+  // -----------------------------------------------------
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +82,15 @@ const SEED_LEADS: Omit<StoredLead, "createdAt">[] = [
     nextBestAction: "Schedule a demo call",
     convertProbability: 85,
     tags: ["hot", "priority"],
+    ownerId: "mem-raj",
+    assignedById: "mem-arjun",
+    assignmentType: "AI",
+    assignmentReason: "High-intent enterprise lead — Raj's segment; senior Sales coverage.",
+    assignedAt: new Date(Date.now() - 4 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    followUpOwnerId: "mem-raj",
+    operationalStatus: "ENGAGED",
+    lastContactedAt: new Date(Date.now() - 18 * 3600000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 60000).toISOString(),
   },
   {
@@ -90,6 +113,15 @@ const SEED_LEADS: Omit<StoredLead, "createdAt">[] = [
     nextBestAction: "Send personalized follow-up email",
     convertProbability: 62,
     tags: ["warm"],
+    ownerId: "mem-karan",
+    assignedById: "mem-raj",
+    assignmentType: "MANUAL",
+    assignmentReason: "Routed manually by Raj — warm referral, Karan owns referral funnel.",
+    assignedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    followUpOwnerId: "mem-karan",
+    operationalStatus: "CONTACTED",
+    lastContactedAt: new Date(Date.now() - 12 * 3600000).toISOString(),
     updatedAt: new Date(Date.now() - 15 * 60000).toISOString(),
   },
   {
@@ -112,6 +144,15 @@ const SEED_LEADS: Omit<StoredLead, "createdAt">[] = [
     nextBestAction: null,
     convertProbability: 55,
     tags: ["warm"],
+    ownerId: null,
+    assignedById: null,
+    assignmentType: "MANUAL",
+    assignmentReason: null,
+    assignedAt: null,
+    departmentId: "dept-sales",
+    followUpOwnerId: null,
+    operationalStatus: "NEW",
+    lastContactedAt: null,
     updatedAt: new Date(Date.now() - 45 * 60000).toISOString(),
   },
   {
@@ -134,6 +175,15 @@ const SEED_LEADS: Omit<StoredLead, "createdAt">[] = [
     nextBestAction: "Schedule a demo call",
     convertProbability: 78,
     tags: ["hot"],
+    ownerId: "mem-sneha",
+    assignedById: null,
+    assignmentType: "AI",
+    assignmentReason: "Workload headroom + segment match — operations expansion deal.",
+    assignedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
+    departmentId: "dept-ops",
+    followUpOwnerId: "mem-sneha",
+    operationalStatus: "NEW",
+    lastContactedAt: null,
     updatedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
   },
   {
@@ -156,6 +206,15 @@ const SEED_LEADS: Omit<StoredLead, "createdAt">[] = [
     nextBestAction: "Add to nurture campaign",
     convertProbability: 42,
     tags: ["nurture"],
+    ownerId: "mem-tanvi",
+    assignedById: null,
+    assignmentType: "ROUND_ROBIN",
+    assignmentReason: "Round-robin rotation — Tanvi up next in the Sales queue.",
+    assignedAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+    departmentId: "dept-sales",
+    followUpOwnerId: "mem-tanvi",
+    operationalStatus: "STALE",
+    lastContactedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 3600000).toISOString(),
   },
 ];
@@ -203,13 +262,59 @@ async function safeWriteJson(file: string, data: unknown): Promise<void> {
   }
 }
 
+let loadingPromise: Promise<void> | null = null;
+
 async function ensureLoaded(): Promise<void> {
   if (cache.loaded) return;
-  cache.loaded = true;
+  if (loadingPromise) {
+    await loadingPromise;
+    return;
+  }
+  loadingPromise = doLoad().finally(() => {
+    loadingPromise = null;
+  });
+  await loadingPromise;
+}
 
-  const leadsFromDisk = await safeReadJson<StoredLead[]>(LEADS_FILE);
+async function doLoad(): Promise<void> {
+  if (cache.loaded) return;
+
+  const leadsFromDisk = await safeReadJson<Partial<StoredLead>[]>(LEADS_FILE);
   if (leadsFromDisk?.length) {
-    cache.leads = leadsFromDisk;
+    // Backfill assignment fields on legacy disk records so older .data/leads.json
+    // dumps work seamlessly after the LEAD ↔ TEAM integration.
+    cache.leads = leadsFromDisk.map((l) => ({
+      id: l.id ?? newId("lead"),
+      firstName: l.firstName ?? "",
+      lastName: l.lastName ?? "",
+      email: l.email ?? "",
+      phone: l.phone ?? null,
+      company: l.company ?? "",
+      website: l.website ?? null,
+      source: l.source ?? "Website",
+      leadType: l.leadType ?? null,
+      value: l.value ?? "Medium",
+      location: l.location ?? null,
+      status: l.status ?? "NEW",
+      stage: l.stage ?? "LEAD_ENTERED",
+      aiScore: l.aiScore ?? 0,
+      aiClassification: l.aiClassification ?? null,
+      aiAnalysis: l.aiAnalysis ?? null,
+      nextBestAction: l.nextBestAction ?? null,
+      convertProbability: l.convertProbability ?? 0,
+      tags: l.tags ?? [],
+      ownerId: l.ownerId ?? null,
+      assignedById: l.assignedById ?? null,
+      assignmentType: l.assignmentType ?? "MANUAL",
+      assignmentReason: l.assignmentReason ?? null,
+      assignedAt: l.assignedAt ?? null,
+      departmentId: l.departmentId ?? null,
+      followUpOwnerId: l.followUpOwnerId ?? null,
+      operationalStatus: l.operationalStatus ?? "NEW",
+      lastContactedAt: l.lastContactedAt ?? null,
+      createdAt: l.createdAt ?? new Date().toISOString(),
+      updatedAt: l.updatedAt ?? new Date().toISOString(),
+    }));
   } else {
     const now = new Date().toISOString();
     cache.leads = SEED_LEADS.map((l) => ({ ...l, createdAt: now }));
@@ -223,6 +328,8 @@ async function ensureLoaded(): Promise<void> {
     cache.timeline = SEED_TIMELINE.map((t, i) => ({ ...t, id: `tl_seed_${i}` }));
     await safeWriteJson(TIMELINE_FILE, cache.timeline);
   }
+
+  cache.loaded = true;
 }
 
 function newId(prefix: string): string {
@@ -255,11 +362,50 @@ export const leadStore = {
     return cache.leads.find((l) => l.id === id) || null;
   },
 
-  async create(input: Omit<StoredLead, "id" | "createdAt" | "updatedAt">): Promise<StoredLead> {
+  async create(
+    input: Omit<
+      StoredLead,
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "ownerId"
+      | "assignedById"
+      | "assignmentType"
+      | "assignmentReason"
+      | "assignedAt"
+      | "departmentId"
+      | "followUpOwnerId"
+      | "operationalStatus"
+      | "lastContactedAt"
+    > &
+      Partial<
+        Pick<
+          StoredLead,
+          | "ownerId"
+          | "assignedById"
+          | "assignmentType"
+          | "assignmentReason"
+          | "assignedAt"
+          | "departmentId"
+          | "followUpOwnerId"
+          | "operationalStatus"
+          | "lastContactedAt"
+        >
+      >,
+  ): Promise<StoredLead> {
     await ensureLoaded();
     const now = new Date().toISOString();
     const lead: StoredLead = {
       ...input,
+      ownerId: input.ownerId ?? null,
+      assignedById: input.assignedById ?? null,
+      assignmentType: input.assignmentType ?? "MANUAL",
+      assignmentReason: input.assignmentReason ?? null,
+      assignedAt: input.assignedAt ?? null,
+      departmentId: input.departmentId ?? null,
+      followUpOwnerId: input.followUpOwnerId ?? null,
+      operationalStatus: input.operationalStatus ?? "NEW",
+      lastContactedAt: input.lastContactedAt ?? null,
       id: newId("lead"),
       createdAt: now,
       updatedAt: now,
