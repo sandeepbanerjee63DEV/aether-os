@@ -144,12 +144,35 @@ function formatTimeSince(iso: string | null): string {
   return `${Math.max(1, Math.floor(diffMs / 60000))}m`;
 }
 
+const EMPTY_DEAL_OWNERSHIP: DealOwnership = {
+  totalAssignedDeals: 0,
+  activeDeals: 0,
+  atRiskDeals: 0,
+  stalledDeals: 0,
+  wonDealsCount: 0,
+  totalRevenueResponsibility: 0,
+  weightedRevenueResponsibility: 0,
+  avgDealVelocityDays: null,
+  dealWorkloadPct: 0,
+  winRate: 0,
+  pendingApprovals: 0,
+  recentDeals: [],
+};
+
 export function OperationalOwnershipPanel({
-  data,
+  data: rawData,
   memberName,
   onSelectLead,
   onSelectDeal,
 }: OperationalOwnershipPanelProps) {
+  // Defensive: an older cached payload (or a stale memory-store response on
+  // serverless cold-start) may not include the `deals` sub-object yet.
+  // Normalize so the rest of the component can assume a complete shape.
+  const data: OperationalOwnership = {
+    ...rawData,
+    deals: rawData?.deals ?? EMPTY_DEAL_OWNERSHIP,
+  };
+
   if (data.totalAssignedLeads === 0 && data.deals.totalAssignedDeals === 0) {
     return (
       <section className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-4">

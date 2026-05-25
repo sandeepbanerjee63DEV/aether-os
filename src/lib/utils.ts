@@ -18,13 +18,16 @@ export function formatRelativeTime(date: Date | string): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
-export function getInitials(name: string): string {
-  return name
+export function getInitials(name: string | null | undefined): string {
+  if (!name || typeof name !== "string") return "?";
+  const initials = name
     .split(" ")
+    .filter(Boolean)
     .map((n) => n[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
+  return initials || "?";
 }
 
 export function getScoreColor(score: number): string {

@@ -263,9 +263,9 @@ export function LeadOwnerCard({
               <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">
                 Assigned To
               </p>
-              <p className="truncate text-sm font-semibold text-slate-900">{owner.name}</p>
+              <p className="truncate text-sm font-semibold text-slate-900">{owner.name ?? "Unknown"}</p>
               <p className="truncate text-[11px] text-slate-500">
-                {owner.title || owner.role.replace("_", " ")}
+                {owner.title || (owner.role ?? "").replace("_", " ") || "Team member"}
               </p>
             </div>
             <div className="relative" ref={menuRef}>
@@ -394,14 +394,14 @@ export function LeadOwnerCard({
               <span
                 className={cn(
                   "font-semibold tabular-nums",
-                  owner.workloadPct >= 85
+                  (owner.workloadPct ?? 0) >= 85
                     ? "text-rose-600"
-                    : owner.workloadPct >= 70
+                    : (owner.workloadPct ?? 0) >= 70
                       ? "text-amber-600"
                       : "text-emerald-600",
                 )}
               >
-                {owner.workloadPct}%
+                {owner.workloadPct ?? 0}%
               </span>
             </span>
             <span className="flex items-center gap-1">
@@ -409,17 +409,17 @@ export function LeadOwnerCard({
               <span
                 className={cn(
                   "font-semibold tabular-nums",
-                  owner.operationalScore >= 80
+                  (owner.operationalScore ?? 0) >= 80
                     ? "text-emerald-600"
-                    : owner.operationalScore >= 60
+                    : (owner.operationalScore ?? 0) >= 60
                       ? "text-amber-600"
                       : "text-rose-600",
                 )}
               >
-                {owner.operationalScore}
+                {owner.operationalScore ?? 0}
               </span>
             </span>
-            {assignedBy && (
+            {assignedBy?.name && (
               <span className="ml-auto flex items-center gap-1">
                 By <span className="font-semibold text-slate-600">{assignedBy.name.split(" ")[0]}</span>
               </span>
@@ -480,7 +480,7 @@ function SuggestionRow({
             {candidate.score}
           </Badge>
         </div>
-        <p className="text-[10px] text-slate-500">{candidate.memberRole.replace("_", " ")}</p>
+        <p className="text-[10px] text-slate-500">{(candidate.memberRole ?? "").replace("_", " ")}</p>
         <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-600">{candidate.reason}</p>
         <div className="mt-1 flex gap-2 text-[10px] text-slate-400">
           <span>
